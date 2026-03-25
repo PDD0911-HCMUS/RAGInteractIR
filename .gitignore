@@ -1,1 +1,12 @@
 keys.txt
+
+datasets/*
+
+__pycache__
+
+uploads
+
+Entities\schemas\*
+Entities\entities.py
+Entities\schemas
+Entities

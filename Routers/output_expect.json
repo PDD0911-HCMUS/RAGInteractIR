@@ -1,0 +1,16 @@
+[
+    {
+        "subject":
+        {
+            "attribute": "" ,
+            "object": ""
+        },
+        "relation": "",
+        "object":
+        {
+            "attribute": "",
+            "object": ""
+        }
+    },
+    ...
+]
