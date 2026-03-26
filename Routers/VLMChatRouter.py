@@ -264,7 +264,7 @@ class VLMChatRouter:
         if not convo:
             raise HTTPException(status_code=404, detail="Conversation not found")
         print(f"RAG Text Input: {text}")
-        image_ids, captions, scores = self.visdial_serve.faiss_search(text, self.gallery, top_k=20)
+        image_ids, captions, scores = self.visdial_serve.faiss_search(text, self.gallery, top_k=100)
         
         anwswer = await self.reasoning(convo, text, captions)
         return {
@@ -276,22 +276,56 @@ class VLMChatRouter:
     async def reasoning(self, conversation_id, input, retrieve):
         
         PROMPT_REASON = """
-                Given a user query and retrieved sentences, suggest up to 3 additional (subject, relation, object) triplets that can refine the user's query.
+You are a retrieval refinement assistant.
 
-                User query:
-                {input}
+Your task is to improve the user's image search query by proposing exactly 3 short query suggestions based on the retrieved captions.
 
-                Retrieved sentences:
-                {DB}
+The goal is NOT to answer the user.
+The goal is NOT to rewrite the query with synonyms.
+The goal is to suggest 3 better follow-up queries that help the search system retrieve images closer to the user's true intention.
 
-                Rules:
-                - Only suggest triplets that are supported or strongly implied by the retrieved sentences.
-                - Do not repeat the same information already present in the user query.
-                - For each triplet, provide a short explanation of why it is useful.
-                - Keep the output concise.
-                Expected output:
-                [{{"sug":"...","explain":"..."}}]
-            """
+User query:
+{input}
+
+Retrieved captions:
+{DB}
+
+Rules:
+1. Use only details explicitly supported or strongly implied by the retrieved captions.
+2. Keep the user's original intent unchanged.
+3. Each suggestion must add NEW visual detail not already present in the user query.
+4. The 3 suggestions must be meaningfully different from each other.
+5. Each suggestion must focus on a different refinement aspect whenever possible, such as:
+   - action
+   - scene/background
+   - spatial relation
+   - nearby object
+   - attribute
+   - count
+6. Do NOT produce multiple suggestions with the same core meaning.
+7. If two suggestions describe the same main fact, keep only the more specific one.
+8. Prefer details that are repeated or consistent across multiple retrieved captions.
+9. If the captions are noisy or contradictory, use only the safest supported details.
+10. Do NOT hallucinate.
+11. Do NOT answer the user.
+12. Do NOT summarize the captions.
+13. Do NOT repeat or paraphrase the user query.
+14. Keep each suggestion short and directly usable as a search query.
+15. Each explanation must clearly state what NEW detail was added.
+
+Output requirements:
+- Return valid JSON only.
+- Return exactly 3 items.
+- Do not include markdown fences.
+- Do not include any text before or after the JSON.
+
+Output format:
+[
+  {{"sug":"...", "explain":"..."}},
+  {{"sug":"...", "explain":"..."}},
+  {{"sug":"...", "explain":"..."}}
+]
+"""
         
         # Return format:
         #     [{{"subject":"...","relation":"...","object":"..."}}]
@@ -312,6 +346,7 @@ class VLMChatRouter:
             media_type=media_type,
         )
         
+        print(f"RAW Answer Reasoning: {answer}")
         suggestion = json.loads(answer)
         
         for item in suggestion:
