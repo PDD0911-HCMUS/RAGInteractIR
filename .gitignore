@@ -1,6 +1,8 @@
 keys.txt
 
-datasets/*
+datasets/MSCOCO
+datasets/VG
+datasets/VisDial
 
 __pycache__
 
@@ -8,5 +10,3 @@ uploads
 
 Entities\schemas\*
 Entities\entities.py
-Entities\schemas
-Entities
