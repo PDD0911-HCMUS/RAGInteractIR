@@ -2,7 +2,6 @@ import threading
 from typing import Optional, List, Tuple, Literal
 
 from lmdeploy import pipeline
-from lmdeploy.vl import load_image
 
 MODEL_NAME = "Qwen/Qwen2-VL-2B-Instruct"
 
@@ -60,38 +59,11 @@ def _resp_to_text(resp):
         return (resp.text or "").strip()
     return str(resp).strip()
 
-
-def generate_caption(
-    media_path: Optional[str],
-    user_prompt: str,
-    media_type: str = "image",
-):
-    pipe = get_pipe()
-
-    # currently we only support image input
-    if media_path and media_type == "image":
-        img = load_image(media_path)
-        resp = pipe((user_prompt, img))  # (text, image)
-    else:
-        resp = pipe(user_prompt)
-
-    return _resp_to_text(resp)
-
-
 def generate_answer(
-    media_path: Optional[str],
     user_prompt: str,
-    history: Optional[RoleHistory] = None,
-    media_type: str = "image",
+    history: Optional[RoleHistory] = None
 ):
     pipe = get_pipe()
-
     hist_pairs = normalize_history_for_lmdeploy(history)
-
-    if media_path and media_type == "image":
-        img = load_image(media_path)
-        resp = pipe((user_prompt, img), history=hist_pairs)
-    else:
-        resp = pipe(user_prompt, history=hist_pairs)
-
+    resp = pipe(user_prompt, history=hist_pairs)
     return _resp_to_text(resp)
