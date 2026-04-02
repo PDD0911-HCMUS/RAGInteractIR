@@ -10,3 +10,4 @@ uploads
 
 Entities\schemas\*
 Entities\entities.py
+RetrievalSystemTraffic.sql
