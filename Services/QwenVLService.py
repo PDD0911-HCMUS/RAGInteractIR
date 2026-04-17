@@ -1,7 +1,8 @@
 import threading
+import traceback
 from typing import Optional, List, Tuple, Literal
 
-from lmdeploy import pipeline
+from lmdeploy import PytorchEngineConfig, pipeline
 
 MODEL_NAME = "Qwen/Qwen2-VL-2B-Instruct"
 
@@ -20,7 +21,21 @@ def get_pipe():
     if _pipe is None:
         with _lock:
             if _pipe is None:
-                _pipe = pipeline(MODEL_NAME)
+                try:
+                    print(">>> before pipeline()")
+                    _pipe = pipeline(
+                        MODEL_NAME,
+                        backend_config=PytorchEngineConfig(
+                            # session_len=4096,
+                            max_batch_size=1,
+                            cache_max_entry_count=0.2,
+                        ),
+                    )
+                    print(">>> after pipeline()")
+                except Exception as e:
+                    print(">>> pipeline() failed:", repr(e))
+                    traceback.print_exc()
+                    raise
     return _pipe
 
 
@@ -34,9 +49,9 @@ def normalize_history_for_lmdeploy(history: Optional[RoleHistory]) -> PairHistor
     - system messages are ignored here (you already put system prompt in user_prompt)
     - if the last user message has no assistant reply yet, we drop it
     """
+    # print(f"Norm Hist Func: {history}")
     if not history:
         return []
-
     pairs: PairHistory = []
     pending_user: Optional[str] = None
 
@@ -65,5 +80,6 @@ def generate_answer(
 ):
     pipe = get_pipe()
     hist_pairs = normalize_history_for_lmdeploy(history)
+    # print(f"Normalize hist_pairs: {hist_pairs}")
     resp = pipe(user_prompt, history=hist_pairs)
     return _resp_to_text(resp)

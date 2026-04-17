@@ -3,15 +3,13 @@ import uuid
 import time
 from typing import Optional, Protocol, Literal
 import json
-import faiss
-from fastapi import APIRouter, UploadFile, File, Form, HTTPException
-import numpy as np
+from fastapi import APIRouter, File, Form, HTTPException
 from pydantic import BaseModel
-import torch
 
 from Services.QwenVLService import generate_answer
-# from Services.VisDialSigLIPService import VisDialSiGLIPService
+from Services.PromptCollectionService import PromptCollectionService
 from Services.VisDialCLIPService import VisDialCLIPService
+from Storage.ConversationStore import ConversationStore
 
 
 # ---- typing shared ----
@@ -20,40 +18,27 @@ Role = Literal["user", "assistant", "system"]
 class MessageRequest(BaseModel):
     message: str
 
-# ---- Storage interface (so you can swap implementations easily) ----
-class ConversationProtocol(Protocol):
-    conversation_id: str
-    history: list[tuple[Role, str]]
-
-class ConversationStoreProtocol(Protocol):
-    def create(self, conversation_id: str) -> ConversationProtocol: ...
-    def get(self, conversation_id: str) -> Optional[ConversationProtocol]: ...
-    def append_message(self, conversation_id: str, role: Role, content: str) -> ConversationProtocol: ...
-
-
 class VLMChatRouter:
     def __init__(
         self,
-        conversation_store: ConversationStoreProtocol,
+        conversation_store: ConversationStore,
         upload_dir: Optional[str] = None,
     ):
+        #--------------Config---------------#
         self.store = conversation_store
         self.upload_dir = upload_dir or os.environ.get("VLM_UPLOAD_DIR", "./uploads")
         os.makedirs(self.upload_dir, exist_ok=True)
         
-        # self.visdial_serve = VisDialSiGLIPService(
-        #     device="cuda" if torch.cuda.is_available() else "cpu",
-        #     vlm="google/siglip-base-patch16-224"
-        # )
-        
         self.visdial_serve = VisDialCLIPService(
-            device="cuda" if torch.cuda.is_available() else "cpu",
+            # device="cuda" if torch.cuda.is_available() else "cpu",
+            device="cpu",
             vlm="openai/clip-vit-base-patch32"
         )
-
+        self.prompt = PromptCollectionService()
         self.router = APIRouter(prefix="/vlm", tags=["VLM"])
-        
         self.gallery = self.visdial_serve.build_gallery()
+        
+        #----------------API----------------#
 
         # 1) Create empty conversation
         self.router.add_api_route(
@@ -86,7 +71,23 @@ class VLMChatRouter:
             summary="faiss search"
         )
 
-    # ----------------- endpoints -----------------
+    # ----------------- ENPOINTS -----------------
+    
+    """
+    Theo luồng là:
+    1. input user
+    2. Convert triplet (PROMPT CONVERT)
+    3. Embedding
+    4. RAG-Reasoning:
+        4.1. FAISS
+        4.2. Collect top-k caption & images
+        4.3. cho LLM suy luận (PROMPT REASON)
+        4.4. trả về tầm 3 suggestions 
+    5. Trả về hình ảnh và suggestions
+    
+    LƯU Ý: nhớ để ý đến HISTORY để lưu được quá trình truy vấn để khớp với user intention.
+    """
+    
     async def create_conversation(self):
         """
         POST /api/v1/vlm/conversations
@@ -100,8 +101,7 @@ class VLMChatRouter:
 
         # Optional initial assistant greeting (text-only)
         start = time.time()
-        greeting_prompt = "Hello, who are you?"
-        caption = generate_answer(user_prompt=greeting_prompt, history=None)
+        caption = generate_answer(user_prompt=self.prompt.greeting, history=None)
         latency_ms = int((time.time() - start) * 1000)
 
         self.store.append_message(conversation_id, "assistant", caption)
@@ -140,133 +140,91 @@ class VLMChatRouter:
         if not convo:
             raise HTTPException(status_code=404, detail="Conversation not found")
         
-        answer, latency_ms = await self.convert_triplet(text=req.message)
-
+        print(f"User Message: {req.message}")
+        
+        history = convo.history
+        # CONVERT TRIPLETS (Step 2.0)
+        triplets, latency_ms = await self.convert_triplet(text=req.message, history=history)
+        
+        print(f"History Chat: {history}")
+        print(f"Triplet Answer: {triplets}")
+        
+        queries = await self.build_query(answer=json.loads(triplets))
+        print(f"Queries Built: {queries}")
+        
         # Append to history
         self.store.append_message(conversation_id, "user", req.message)
-        self.store.append_message(conversation_id, "assistant", answer)
-
-        # Reload for updated length
+        # self.store.append_message(conversation_id, "assistant", triplets)
+        
+        # Update convo
         convo2 = self.store.get(conversation_id)
         
-        print(f"Triplet Answer: {answer}")
+        retrieve = await self.RAG_faiss_retrieval(convo2.history, queries)
         
-        queries = await self.build_query(answer=json.loads(answer))
+        assistant_payload = json.dumps({
+            "triplets": triplets,
+            "suggestions": retrieve.get("suggest", [])
+        }, ensure_ascii=False)
         
-        retrieve = await self.RAG_faiss_retrieval(conversation_id, queries)
-        
-        # print(f"RAG Reasoning Retrieve: {retrieve}")
+        self.store.append_message(conversation_id, "assistant", assistant_payload)
         
         return {
             "conversation_id": conversation_id,
-            "answer": answer,
-            "history_length": len(convo2.history) if convo2 else 0,
+            "answer": triplets,
+            "history_length": len(history) if convo else 0,
             "retrieve": retrieve,
             "meta": {
                 "latency_ms": latency_ms,
             },
         }
 
-    async def RAG_faiss_retrieval(self, conversation_id, text):
+    async def RAG_faiss_retrieval(self, history, text):
         """
         POST /api/v1/vlm/conversations/faiss
         JSON:
           - message: str
+        Nội dung:
+          - Hàm này sẽ gọi 2 phương thức:
+            + faiss_search: truy vấn kết quả từ DB với truy vấn từ user
+            + reasoning: sử dụng kết quả truy vấn để suy luận và đưa ra suggestions
         """
-        convo = self.store.get(conversation_id)
-        if not convo:
-            raise HTTPException(status_code=404, detail="Conversation not found")
+
         print(f"RAG Text Input: {text}")
-        image_ids, captions, scores = self.visdial_serve.faiss_search(text, self.gallery, top_k=100)
+        image_ids, captions, scores = self.visdial_serve.faiss_search(text, self.gallery, top_k=20)
         
-        anwswer = await self.reasoning(convo, text, captions)
+        anwswer = await self.reasoning(history, text, captions)
+        
         return {
             "id": image_ids,
             "text": captions,
             "suggest": anwswer
         }
         
-    async def reasoning(self, conversation_id, input, retrieve):
+    async def reasoning(self, history, input, retrieve):
         
-        PROMPT_REASON = """
-You are a retrieval refinement assistant.
-
-Your task is to improve the user's image search query by proposing exactly 3 short query suggestions based on the retrieved captions.
-
-The goal is NOT to answer the user.
-The goal is NOT to rewrite the query with synonyms.
-The goal is to suggest 3 better follow-up queries that help the search system retrieve images closer to the user's true intention.
-
-User query:
-{input}
-
-Retrieved captions:
-{DB}
-
-Rules:
-1. Use only details explicitly supported or strongly implied by the retrieved captions.
-2. Keep the user's original intent unchanged.
-3. Each suggestion must add NEW visual detail not already present in the user query.
-4. The 3 suggestions must be meaningfully different from each other.
-5. Each suggestion must focus on a different refinement aspect whenever possible, such as:
-   - action
-   - scene/background
-   - spatial relation
-   - nearby object
-   - attribute
-   - count
-6. Do NOT produce multiple suggestions with the same core meaning.
-7. If two suggestions describe the same main fact, keep only the more specific one.
-8. Prefer details that are repeated or consistent across multiple retrieved captions.
-9. If the captions are noisy or contradictory, use only the safest supported details.
-10. Do NOT hallucinate.
-11. Do NOT answer the user.
-12. Do NOT summarize the captions.
-13. Do NOT repeat or paraphrase the user query.
-14. Keep each suggestion short and directly usable as a search query.
-15. Each explanation must clearly state what NEW detail was added.
-
-Output requirements:
-- Return valid JSON only.
-- Return exactly 3 items.
-- Do not include markdown fences.
-- Do not include any text before or after the JSON.
-
-Output format:
-[
-  {{"sug":"...", "explain":"..."}},
-  {{"sug":"...", "explain":"..."}},
-  {{"sug":"...", "explain":"..."}}
-]
-"""
-        
-        # Return format:
-        #     [{{"subject":"...","relation":"...","object":"..."}}]
-        prompt = PROMPT_REASON.format(
-            input=input,
-            DB=retrieve
+        prompt = self.prompt.reason.format(
+            input_query=input,
+            db=retrieve
         )
         
         # print(prompt)
-        history = getattr(conversation_id, "history", [])
+        print(f"Reasoning History: {history}")
         
         answer = generate_answer(
             user_prompt=prompt,
             history=history
         )
         
-        print(f"RAW Answer Reasoning: {answer}")
+        # print(f"RAW Answer Reasoning: {answer}")
         suggestion = json.loads(answer)
         
         seen = set()
         suggestion = [d for d in suggestion if not (d["sug"] in seen or seen.add(d["sug"]))]
         
-        print(f"RAW Answer Reasoning Remove Dup: {answer}")
+        # print(f"RAW Answer Reasoning Remove Dup: {answer}")
         
         for item in suggestion:
-            trip_sug = await self.convert_triplet(item['sug'])
-            print(f"Suggestion: {item['sug']}")
-            print(f"Suggestion triplet: {trip_sug[0]} Type - {type(trip_sug[0])}")
+            trip_sug = await self.convert_triplet(item['sug'], history)
             
             item["triplet"] = trip_sug[0] #json.loads(trip_sug[0])
         
@@ -276,7 +234,7 @@ Output format:
         
         queries = []
         for item in answer:
-            subject = item.get("subject", "").strip()
+            subject = item.get("subject", "").strip()   
             relation = item.get("relation", "").strip()
             obj = item.get("object", "").strip()
             query = f"{subject} {relation} {obj}".strip()
@@ -284,19 +242,17 @@ Output format:
         
         return "; ".join(queries)
     
-    async def convert_triplet(self, text):
+    async def convert_triplet(self, text, history):
         print(f"Input Convert Triplet: {text}")
-        BASE_PROMPT = "Convert the given sentence into (subject, relation, object) triplet.\nRules:\n- Do NOT add explanations.\n- Use lowercase for relation.\nReturn format:\n[{\"subject\":\"...\",\"relation\":\"...\",\"object\":\"...\"}]\nSentence:\n"
-        # Build prompt
-        PROMPT_TRIPLET = (
-            "You are a Vision-Language Model.\n"
-            f"User question: {BASE_PROMPT}{text}"
+        
+        prompt = self.prompt.convert_triplet.format(
+            text=text
         )
 
         start = time.time()
         answer = generate_answer(
-            user_prompt=PROMPT_TRIPLET,
-            history=None, # role-based history; service will normalize it
+            user_prompt=prompt,
+            history=history, # role-based history; service will normalize it
         )
         
         latency_ms = int((time.time() - start) * 1000)
