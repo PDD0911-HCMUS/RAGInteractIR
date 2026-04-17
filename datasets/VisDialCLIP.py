@@ -102,115 +102,117 @@ class VisDial:
 
         return feats.cpu().tolist()
     
-    # def insert_visdial_questions(self):
-    #     inserted_rows = 0
-    #     buffer = []
-    #     with SessionLocal() as session:
-    #         with Progress(
-    #         SpinnerColumn(),
-    #         TextColumn("[progress.description]{task.description}"),
-    #         BarColumn(),
-    #         TextColumn("{task.completed}/{task.total}"),
-    #         TimeRemainingColumn(),
-    #         ) as progress:
+    def insert_visdial_questions(self):
+        inserted_rows = 0
+        buffer = []
+        with SessionLocal() as session:
+            with Progress(
+            SpinnerColumn(),
+            TextColumn("[progress.description]{task.description}"),
+            BarColumn(),
+            TextColumn("{task.completed}/{task.total}"),
+            TimeRemainingColumn(),
+            ) as progress:
                 
-    #             task = progress.add_task("[green]Processing insert Questions Table...",total=len(self.questions))
-
-    #             for item in self.questions:
-    #                 try:
-    #                     q_em = self.embed_texts(item)
+                task = progress.add_task("[green]Processing insert Questions Table...",total=len(self.questions))
+                idx = 0
+                for item in self.questions:
+                    try:
+                        q_em = self.embed_texts(item)
                         
-    #                     entity = VisDialCLIPQuestions(
-    #                         question = item,
-    #                         q_em = q_em,
-    #                         mode = self.mode
-    #                     )
-                        
-    #                     buffer.append(entity)
+                        entity = VisDialCLIPQuestions(
+                            idx = idx,
+                            question = item,
+                            q_em = q_em,
+                            mode = self.mode
+                        )
+                        idx = idx + 1
+                        buffer.append(entity)
 
-    #                     if len(buffer) >= self.batchsize: # một lần add vào DB một lượng = batchsize
-    #                         session.add_all(buffer)
-    #                         session.commit()
+                        if len(buffer) >= self.batchsize: # một lần add vào DB một lượng = batchsize
+                            session.add_all(buffer)
+                            session.commit()
 
-    #                         inserted_rows += len(buffer)
-    #                         buffer.clear()
+                            inserted_rows += len(buffer)
+                            buffer.clear()
 
-    #                         progress.console.print(
-    #                             f"[cyan]Inserted rows:[/cyan] {inserted_rows}"
-    #                         )
+                            progress.console.print(
+                                f"[cyan]Inserted rows:[/cyan] {inserted_rows}"
+                            )
 
-    #                 except Exception as e:
-    #                     progress.console.print(
-    #                         f"[red]Error: {e}"
-    #                     )
+                    except Exception as e:
+                        progress.console.print(
+                            f"[red]Error: {e}"
+                        )
 
-    #                 progress.advance(task)
+                    progress.advance(task)
 
-    #         # insert remaining rows
-    #         if buffer:
-    #             session.add_all(buffer)
-    #             session.commit()
-    #             inserted_rows += len(buffer)
+            # insert remaining rows
+            if buffer:
+                session.add_all(buffer)
+                session.commit()
+                inserted_rows += len(buffer)
 
-    #     print("\n================================")
-    #     print("Done inserting Questions Table")
-    #     print("Total rows inserted:", inserted_rows)
-    #     print("================================")
+        print("\n================================")
+        print("Done inserting Questions Table")
+        print("Total rows inserted:", inserted_rows)
+        print("================================")
                 
-    # def insert_visdial_answers(self):
-    #     inserted_rows = 0
-    #     buffer = []
-    #     with SessionLocal() as session:
-    #         with Progress(
-    #         SpinnerColumn(),
-    #         TextColumn("[progress.description]{task.description}"),
-    #         BarColumn(),
-    #         TextColumn("{task.completed}/{task.total}"),
-    #         TimeRemainingColumn(),
-    #         ) as progress:
+    def insert_visdial_answers(self):
+        inserted_rows = 0
+        buffer = []
+        with SessionLocal() as session:
+            with Progress(
+            SpinnerColumn(),
+            TextColumn("[progress.description]{task.description}"),
+            BarColumn(),
+            TextColumn("{task.completed}/{task.total}"),
+            TimeRemainingColumn(),
+            ) as progress:
                 
-    #             task = progress.add_task("[green]Processing Answers Table...",total=len(self.answers))
-
-    #             for item in self.answers:
-    #                 try:
-    #                     ans_em = self.embed_texts(item)
+                task = progress.add_task("[green]Processing Answers Table...",total=len(self.answers))
+                idx = 0
+                for item in self.answers:
+                    try:
+                        ans_em = self.embed_texts(item)
                         
-    #                     entity = VisDialCLIPAnswers(
-    #                         answers = item,
-    #                         ans_em = ans_em,
-    #                         mode = self.mode
-    #                     )
-                        
-    #                     buffer.append(entity)
+                        entity = VisDialCLIPAnswers(
+                            idx = idx,
+                            answers = item,
+                            ans_em = ans_em,
+                            mode = self.mode
+                        )
+                        idx = idx + 1
+                        buffer.append(entity)
 
-    #                     if len(buffer) >= self.batchsize: # một lần add vào DB một lượng = batchsize
-    #                         session.add_all(buffer)
-    #                         session.commit()
+                        if len(buffer) >= self.batchsize: # một lần add vào DB một lượng = batchsize
+                            session.add_all(buffer)
+                            session.commit()
 
-    #                         inserted_rows += len(buffer)
-    #                         buffer.clear()
+                            inserted_rows += len(buffer)
+                            buffer.clear()
 
-    #                         progress.console.print(
-    #                             f"[cyan]Inserted rows:[/cyan] {inserted_rows}"
-    #                         )
+                            progress.console.print(
+                                f"[cyan]Inserted rows:[/cyan] {inserted_rows}"
+                            )
 
-    #                 except Exception as e:
-    #                     progress.console.print(
-    #                         f"[red]Error: {e}"
-    #                     )
+                    except Exception as e:
+                        progress.console.print(
+                            f"[red]Error: {e}"
+                        )
 
-    #                 progress.advance(task)
+                    progress.advance(task)
 
-    #         # insert remaining rows
-    #         if buffer:
-    #             session.add_all(buffer)
-    #             session.commit()
-    #             inserted_rows += len(buffer)
+            # insert remaining rows
+            if buffer:
+                session.add_all(buffer)
+                session.commit()
+                inserted_rows += len(buffer)
 
-    #     print("\n================================")
-    #     print("Done inserting Answers Table")
-    #     print("Total rows inserted:", inserted_rows)
-    #     print("================================")
+        print("\n================================")
+        print("Done inserting Answers Table")
+        print("Total rows inserted:", inserted_rows)
+        print("================================")
     
     def insert_visdial_cap(self):
         inserted_rows = 0
