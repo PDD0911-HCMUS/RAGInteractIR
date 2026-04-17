@@ -9,6 +9,7 @@ __pycache__
 uploads
 
 Entities\schemas\*
+Entities\schemas
 Entities\entities.py
 RetrievalSystemTraffic.sql
 
