@@ -143,29 +143,35 @@ class VLMChatRouter:
         print(f"User Message: {req.message}")
         
         history = convo.history
-        # CONVERT TRIPLETS (Step 2.0)
+        
+        """ CONVERT TRIPLETS (Step 2) """
         triplets, latency_ms = await self.convert_triplet(text=req.message, history=history)
         
         print(f"History Chat: {history}")
         print(f"Triplet Answer: {triplets}")
         
+        """ Xây dựng Query bằng cách nối thành phần triplet thành 1 câu <S ; R ; O> -> S_R_O """
         queries = await self.build_query(answer=json.loads(triplets))
         print(f"Queries Built: {queries}")
         
-        # Append to history
+        """ 
+        Append to history:
+        - vị trí user: stage_0 sẽ là D_0, từ stage_i trở đi sẽ là A_i, i =0
+        """
         self.store.append_message(conversation_id, "user", req.message)
         # self.store.append_message(conversation_id, "assistant", triplets)
         
-        # Update convo
-        convo2 = self.store.get(conversation_id)
+        """ Bắt đầu vào Step 4 """
+        retrieve = await self.RAG_faiss_retrieval(history, queries)
         
-        retrieve = await self.RAG_faiss_retrieval(convo2.history, queries)
-        
+        """ 
+        Append to history:
+        - vị trí LLM: từ stage_i trở đi sẽ là Q_i, i =0
+        """
         assistant_payload = json.dumps({
             "triplets": triplets,
             "suggestions": retrieve.get("suggest", [])
         }, ensure_ascii=False)
-        
         self.store.append_message(conversation_id, "assistant", assistant_payload)
         
         return {
@@ -189,9 +195,11 @@ class VLMChatRouter:
             + reasoning: sử dụng kết quả truy vấn để suy luận và đưa ra suggestions
         """
 
+        """ Tiến hành search bằng FAISS 4.1, 4.2"""
         print(f"RAG Text Input: {text}")
         image_ids, captions, scores = self.visdial_serve.faiss_search(text, self.gallery, top_k=20)
         
+        """ Tiến hành suy luận 4.3, 4.4"""
         anwswer = await self.reasoning(history, text, captions)
         
         return {

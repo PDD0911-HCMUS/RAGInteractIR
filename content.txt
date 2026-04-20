@@ -33,10 +33,10 @@ Các Modules:
 convert free-text -> triplets
 - Query Diagnosis (Reasoning)
 sử dụng kết quả của RAG để:
-	- xác định missmatch
-	- xác định chủ đề
-	- xác định đề xuất chỉnh sửa
-	- trả kết quả của turn hiện tại
+	+ xác định missmatch
+	+ xác định chủ đề
+	+ xác định đề xuất chỉnh sửa
+	+ trả kết quả của turn hiện tại
 - Query Refinement
 Đề xuất chỉnh sửa
 Giải thích kết quả:
@@ -45,6 +45,9 @@ Giải thích kết quả:
 User có thể đồng ý, từ chối, hoặc sửa theo ý họ
 
 -> lặp tiếp
+=> trả về sẽ là:
+- triplet
+- suggestions
 
 User input 
 -> [Prompt 1] Convert sang triplets 
@@ -116,3 +119,20 @@ Output format:
   {{"sug":"...", "explain":"..."}}
 ]
 """
+
+
+[
+  ('system', 'You are the Vision-Language Model.'), 
+  ('assistant', 'I am a large language model created by Alibaba Cloud.'), 
+  ('user', 'a group people in the party'), 
+  ('assistant', 
+    '{
+      "triplets": "[{\\"subject\\":\\"a group of people\\",\\"relation\\":\\"are\\",\\"object\\":\\"in the party\\"}]", 
+      "suggestions": [
+        {"sug": "a group of people playing video games", "explain": "The user is interested in a group of people playing video games, not just sitting around or eating.", 
+        "triplet": "[{\\"subject\\":\\"a group of people\\",\\"relation\\":\\"are\\",\\"object\\":\\"playing video games\\"}]"}, 
+        {"sug": "a group of people in a living room", "explain": "The user is looking for a group of people in a living room, not just a group of people sitting at a table or in a house.", 
+        "triplet": "[{\\"subject\\":\\"a group of people\\",\\"relation\\":\\"in\\",\\"object\\":\\"a living room\\"}]"}]}'), 
+  ('user', 'a group of people are in the party; a group of people are playing video games'), 
+  ('assistant', '{"triplets": "[{\\"subject\\":\\"a group of people\\",\\"relation\\":\\"are\\",\\"object\\":\\"in the party\\"},{\\"subject\\":\\"a group of people\\",\\"relation\\":\\"are\\",\\"object\\":\\"playing video games\\"}]", "suggestions": [{"sug": "a group of people playing video games", "explain": "The user is interested in a group of people playing video games, but the retrieved captions do not provide this detail.", "triplet": "[{\\"subject\\":\\"a group of people\\",\\"relation\\":\\"are\\",\\"object\\":\\"playing video games\\"}]"}, {"sug": "a group of people sitting in a living room", "explain": "The user is interested in a group of people sitting in a living room, but the retrieved captions do not provide this detail.", "triplet": "[{\\"subject\\":\\"a group of people\\",\\"relation\\":\\"are\\",\\"object\\":\\"sitting in a living room\\"}]"}]}'), ('user', 'a group of people are in the party; a group of people are playing video games; a group of people are sitting in a living room')
+]

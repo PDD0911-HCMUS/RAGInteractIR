@@ -1,5 +1,5 @@
 from Database.db_session import SessionLocal
-from Database.base_repository import BaseRepository
+from Database.get_base_scripts import BaseRepository
 
 
 class UnitOfWork:
