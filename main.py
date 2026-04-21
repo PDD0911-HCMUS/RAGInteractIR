@@ -8,13 +8,15 @@ from Services.QwenVLService import get_pipe
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    print("=== Preloading Qwen pipeline ===")
+    print("=== Preloading pipeline ===")
     get_pipe()
-    print("=== Qwen pipeline ready ===")
+    print("=== pipeline ready ===")
     yield
     print("=== App shutdown ===")
 
-app = FastAPI(title="VLM Backend", lifespan=lifespan)
+app = FastAPI(title="VLM Backend", 
+            #   lifespan=lifespan
+              )
 
 # ---- CORS CONFIG ----
 app.add_middleware(

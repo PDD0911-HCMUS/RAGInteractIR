@@ -201,8 +201,8 @@ if __name__ == "__main__":
     
     
     script_text = visdial.get_script(
-        index=235,
-        include_answer_options=True,
+        index=789,
+        include_answer_options=False,
         return_as_string=True
     )
 

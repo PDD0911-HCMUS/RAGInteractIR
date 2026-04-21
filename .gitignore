@@ -14,3 +14,5 @@ Entities/entities.py
 RetrievalSystemTraffic.sql
 
 datasets/imageDemo
+
+*.key

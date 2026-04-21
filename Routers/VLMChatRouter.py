@@ -1,22 +1,21 @@
 import os
 import uuid
 import time
-from typing import Optional, Protocol, Literal
 import json
-from fastapi import APIRouter, File, Form, HTTPException
+from typing import Optional
+
+from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 
-from Services.QwenVLService import generate_answer
+from Services.VisDialGPTCLIPService import VisDialGPTCLIPService
+from Services.OpenAIService import OpenAIService
 from Services.PromptCollectionService import PromptCollectionService
-from Services.VisDialCLIPService import VisDialCLIPService
 from Storage.ConversationStore import ConversationStore
 
 
-# ---- typing shared ----
-Role = Literal["user", "assistant", "system"]
-
 class MessageRequest(BaseModel):
     message: str
+
 
 class VLMChatRouter:
     def __init__(
@@ -24,23 +23,36 @@ class VLMChatRouter:
         conversation_store: ConversationStore,
         upload_dir: Optional[str] = None,
     ):
-        #--------------Config---------------#
+        # -------------- Config --------------- #
         self.store = conversation_store
         self.upload_dir = upload_dir or os.environ.get("VLM_UPLOAD_DIR", "./uploads")
         os.makedirs(self.upload_dir, exist_ok=True)
-        
-        self.visdial_serve = VisDialCLIPService(
-            # device="cuda" if torch.cuda.is_available() else "cpu",
-            device="cpu",
-            vlm="openai/clip-vit-base-patch32"
-        )
-        self.prompt = PromptCollectionService()
-        self.router = APIRouter(prefix="/vlm", tags=["VLM"])
-        self.gallery = self.visdial_serve.build_gallery()
-        
-        #----------------API----------------#
 
-        # 1) Create empty conversation
+        # Configurable runtime
+        self.clip_model_name = "openai/clip-vit-base-patch32"
+        self.clip_device = "cuda"
+        self.greeting_model = "gpt-5.4"
+        self.triplet_model = "gpt-5.4-mini"
+        self.reasoning_model = "gpt-5.4-mini"
+
+        # Shared OpenAI service
+        self.openai_service = OpenAIService(model_name=self.greeting_model)
+
+        # Retrieval service
+        self.visdial_serve = VisDialGPTCLIPService(
+            vlm=self.clip_model_name,
+            device=self.clip_device,
+            openai_service=self.openai_service,
+            triplet_model=self.triplet_model,
+            reasoning_model=self.reasoning_model,
+        )
+
+        self.prompt = PromptCollectionService()
+        self.gallery = self.visdial_serve.build_gallery()
+
+        # ---------------- API ---------------- #
+        self.router = APIRouter(prefix="/vlm", tags=["VLM"])
+
         self.router.add_api_route(
             "/conversations",
             self.create_conversation,
@@ -48,60 +60,44 @@ class VLMChatRouter:
             summary="Create a new conversation (no media yet)",
         )
 
-        # 3) Send message (uses current media if available)
         self.router.add_api_route(
             "/conversations/{conversation_id}/messages",
             self.send_message,
             methods=["POST"],
-            summary="Send a question to existing conversation (uses current media if available)",
+            summary="Send a question to existing conversation",
         )
 
-        # 4) (Optional utility) Get conversation state
         self.router.add_api_route(
             "/conversations/{conversation_id}",
             self.get_conversation,
             methods=["GET"],
             summary="Get conversation state (debug)",
         )
-        
-        self.router.add_api_route(
-            "/conversations/{conversation_id}/faiss",
-            self.RAG_faiss_retrieval,
-            methods=["POST"],
-            summary="faiss search"
-        )
 
-    # ----------------- ENPOINTS -----------------
-    
-    """
-    Theo luồng là:
-    1. input user
-    2. Convert triplet (PROMPT CONVERT)
-    3. Embedding
-    4. RAG-Reasoning:
-        4.1. FAISS
-        4.2. Collect top-k caption & images
-        4.3. cho LLM suy luận (PROMPT REASON)
-        4.4. trả về tầm 3 suggestions 
-    5. Trả về hình ảnh và suggestions
-    
-    LƯU Ý: nhớ để ý đến HISTORY để lưu được quá trình truy vấn để khớp với user intention.
-    """
-    
     async def create_conversation(self):
         """
-        POST /api/v1/vlm/conversations
-        Create an empty conversation (no media required).
+        GET /api/v1/vlm/conversations
+        Create an empty conversation.
         """
         conversation_id = str(uuid.uuid4())
         self.store.create(conversation_id=conversation_id)
 
-        # Seed system prompt in history (optional but useful)
-        self.store.append_message(conversation_id, "system", "You are the Vision-Language Model.")
+        # Seed system prompt
+        self.store.append_message(
+            conversation_id,
+            "system",
+            "You are a helpful vision-language assistant."
+        )
 
-        # Optional initial assistant greeting (text-only)
+        # Greeting via OpenAI, not local Qwen
         start = time.time()
-        caption = generate_answer(user_prompt=self.prompt.greeting, history=None)
+        caption = self.openai_service.generate_answer(
+            user_prompt=self.prompt.greeting,
+            history=None,
+            model=self.greeting_model,
+            temperature=0.2,
+            store=False,
+        )
         latency_ms = int((time.time() - start) * 1000)
 
         self.store.append_message(conversation_id, "assistant", caption)
@@ -110,8 +106,8 @@ class VLMChatRouter:
             "conversation_id": conversation_id,
             "caption": caption,
             "meta": {
-                "backend": "lmdeploy",
-                "model": "Qwen/Qwen2-VL-2B-Instruct",
+                "backend": "openai",
+                "model": self.greeting_model,
                 "latency_ms": latency_ms,
             },
         }
@@ -119,7 +115,7 @@ class VLMChatRouter:
     async def get_conversation(self, conversation_id: str):
         """
         GET /api/v1/vlm/conversations/{conversation_id}
-        Debug endpoint to inspect current state.
+        Debug endpoint.
         """
         convo = self.store.get(conversation_id)
         if not convo:
@@ -139,130 +135,88 @@ class VLMChatRouter:
         convo = self.store.get(conversation_id)
         if not convo:
             raise HTTPException(status_code=404, detail="Conversation not found")
-        
-        print(f"User Message: {req.message}")
-        
-        history = convo.history
-        
-        """ CONVERT TRIPLETS (Step 2) """
-        triplets, latency_ms = await self.convert_triplet(text=req.message, history=history)
-        
-        print(f"History Chat: {history}")
-        print(f"Triplet Answer: {triplets}")
-        
-        """ Xây dựng Query bằng cách nối thành phần triplet thành 1 câu <S ; R ; O> -> S_R_O """
-        queries = await self.build_query(answer=json.loads(triplets))
-        print(f"Queries Built: {queries}")
-        
-        """ 
-        Append to history:
-        - vị trí user: stage_0 sẽ là D_0, từ stage_i trở đi sẽ là A_i, i =0
-        """
-        self.store.append_message(conversation_id, "user", req.message)
-        # self.store.append_message(conversation_id, "assistant", triplets)
-        
-        """ Bắt đầu vào Step 4 """
-        retrieve = await self.RAG_faiss_retrieval(history, queries)
-        
-        """ 
-        Append to history:
-        - vị trí LLM: từ stage_i trở đi sẽ là Q_i, i =0
-        """
-        assistant_payload = json.dumps({
-            "triplets": triplets,
-            "suggestions": retrieve.get("suggest", [])
-        }, ensure_ascii=False)
+
+        user_message = (req.message or "").strip()
+        if not user_message:
+            raise HTTPException(status_code=400, detail="Message must not be empty")
+
+        print(f"User Message: {user_message}")
+
+        # Snapshot current history BEFORE modifying it
+        history_before = list(convo.history)
+
+        # Step 1: Convert to triplets
+        try:
+            triplets, latency_ms = await self.visdial_serve.convert_triplet(
+                text=user_message,
+                history=history_before,
+            )
+            print(f"History Before: {history_before}")
+            print(f"Triplet Answer: {triplets}")
+
+            triplet_json = json.loads(triplets)
+        except json.JSONDecodeError as e:
+            raise HTTPException(
+                status_code=500,
+                detail=f"Triplet response is not valid JSON: {triplets}"
+            ) from e
+        except Exception as e:
+            raise HTTPException(
+                status_code=500,
+                detail=f"Triplet conversion failed: {repr(e)}"
+            ) from e
+
+        # Step 2: Build retrieval query
+        try:
+            queries = await self.visdial_serve.build_query(answer=triplet_json)
+            print(f"Queries Built: {queries}")
+        except Exception as e:
+            raise HTTPException(
+                status_code=500,
+                detail=f"Failed to build query from triplets: {repr(e)}"
+            ) from e
+
+        # Step 3: Append user message to conversation history
+        self.store.append_message(conversation_id, "user", user_message)
+
+        # For reasoning/retrieval, use history that includes the new user turn
+        convo_after_user = self.store.get(conversation_id)
+        history_for_reasoning = list(convo_after_user.history)
+
+        # Step 4: Retrieval + reasoning
+        try:
+            retrieve = await self.visdial_serve.RAG_faiss_retrieval(
+                history_for_reasoning,
+                self.gallery,
+                queries,
+            )
+        except Exception as e:
+            raise HTTPException(
+                status_code=500,
+                detail=f"RAG retrieval/reasoning failed: {repr(e)}"
+            ) from e
+
+        # Step 5: Append assistant payload
+        assistant_payload = json.dumps(
+            {
+                "triplets": triplets,
+                "suggestions": retrieve.get("suggest", []),
+            },
+            ensure_ascii=False,
+        )
         self.store.append_message(conversation_id, "assistant", assistant_payload)
-        
+
+        # Re-fetch to get the latest length accurately
+        convo_final = self.store.get(conversation_id)
+
         return {
             "conversation_id": conversation_id,
             "answer": triplets,
-            "history_length": len(history) if convo else 0,
+            "history_length": len(convo_final.history) if convo_final else 0,
             "retrieve": retrieve,
             "meta": {
                 "latency_ms": latency_ms,
+                "triplet_model": self.triplet_model,
+                "reasoning_model": self.reasoning_model,
             },
         }
-
-    async def RAG_faiss_retrieval(self, history, text):
-        """
-        POST /api/v1/vlm/conversations/faiss
-        JSON:
-          - message: str
-        Nội dung:
-          - Hàm này sẽ gọi 2 phương thức:
-            + faiss_search: truy vấn kết quả từ DB với truy vấn từ user
-            + reasoning: sử dụng kết quả truy vấn để suy luận và đưa ra suggestions
-        """
-
-        """ Tiến hành search bằng FAISS 4.1, 4.2"""
-        print(f"RAG Text Input: {text}")
-        image_ids, captions, scores = self.visdial_serve.faiss_search(text, self.gallery, top_k=20)
-        
-        """ Tiến hành suy luận 4.3, 4.4"""
-        anwswer = await self.reasoning(history, text, captions)
-        
-        return {
-            "id": image_ids,
-            "text": captions,
-            "suggest": anwswer
-        }
-        
-    async def reasoning(self, history, input, retrieve):
-        
-        prompt = self.prompt.reason.format(
-            input_query=input,
-            db=retrieve
-        )
-        
-        # print(prompt)
-        print(f"Reasoning History: {history}")
-        
-        answer = generate_answer(
-            user_prompt=prompt,
-            history=history
-        )
-        
-        # print(f"RAW Answer Reasoning: {answer}")
-        suggestion = json.loads(answer)
-        
-        seen = set()
-        suggestion = [d for d in suggestion if not (d["sug"] in seen or seen.add(d["sug"]))]
-        
-        # print(f"RAW Answer Reasoning Remove Dup: {answer}")
-        
-        for item in suggestion:
-            trip_sug = await self.convert_triplet(item['sug'], history)
-            
-            item["triplet"] = trip_sug[0] #json.loads(trip_sug[0])
-        
-        return suggestion
-    
-    async def build_query(self, answer):
-        
-        queries = []
-        for item in answer:
-            subject = item.get("subject", "").strip()   
-            relation = item.get("relation", "").strip()
-            obj = item.get("object", "").strip()
-            query = f"{subject} {relation} {obj}".strip()
-            queries.append(query)
-        
-        return "; ".join(queries)
-    
-    async def convert_triplet(self, text, history):
-        print(f"Input Convert Triplet: {text}")
-        
-        prompt = self.prompt.convert_triplet.format(
-            text=text
-        )
-
-        start = time.time()
-        answer = generate_answer(
-            user_prompt=prompt,
-            history=history, # role-based history; service will normalize it
-        )
-        
-        latency_ms = int((time.time() - start) * 1000)
-        
-        return answer, latency_ms

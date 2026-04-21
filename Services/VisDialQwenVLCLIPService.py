@@ -1,3 +1,5 @@
+import json
+
 import faiss
 import numpy as np
 import torch
@@ -18,6 +20,9 @@ from rich.progress import (
     TimeElapsedColumn,
 )
 
+from Services.PromptCollectionService import PromptCollectionService
+from Services.QwenVLService import generate_answer
+
 class VisDialCLIPService:
     
     def __init__(self, vlm, device):
@@ -25,6 +30,7 @@ class VisDialCLIPService:
         self.vlm = vlm
         self.device = device
         self.tokenizer, self.processor, self.model = self.create_vlm()
+        self.prompt = PromptCollectionService()
         pass
     
     def create_vlm(self):
@@ -174,5 +180,77 @@ class VisDialCLIPService:
             captions.append(gallery["caption"][idx])
             s.append(float(score))
         return image_ids, captions, s
-        
     
+    async def build_query(self, answer):
+        
+        queries = []
+        for item in answer:
+            subject = item.get("subject", "").strip()   
+            relation = item.get("relation", "").strip()
+            obj = item.get("object", "").strip()
+            query = f"{subject} {relation} {obj}".strip()
+            queries.append(query)
+        
+        return "; ".join(queries)    
+    
+    async def convert_triplet(self, text, history):
+        print(f"Input Convert Triplet: {text}")
+        
+        prompt = self.prompt.convert_triplet.format(
+            text=text
+        )
+
+        start = time.time()
+        answer = generate_answer(
+            user_prompt=prompt,
+            history=history, # role-based history; service will normalize it
+        )
+        
+        latency_ms = int((time.time() - start) * 1000)
+        
+        return answer, latency_ms
+    
+    async def RAG_faiss_retrieval(self, history, gallery, text):
+
+        """ Tiến hành search bằng FAISS 4.1, 4.2"""
+        print(f"RAG Text Input: {text}")
+        image_ids, captions, scores = self.faiss_search(text, gallery, top_k=20)
+        
+        """ Tiến hành suy luận 4.3, 4.4"""
+        anwswer = await self.reasoning(history, text, captions)
+        
+        return {
+            "id": image_ids,
+            "text": captions,
+            "suggest": anwswer
+        }
+    
+    async def reasoning(self, history, input, retrieve):
+        
+        prompt = self.prompt.reason.format(
+            input_query=input,
+            db=retrieve
+        )
+        
+        # print(prompt)
+        print(f"Reasoning History: {history}")
+        
+        answer = generate_answer(
+            user_prompt=prompt,
+            history=history
+        )
+        
+        # print(f"RAW Answer Reasoning: {answer}")
+        suggestion = json.loads(answer)
+        
+        seen = set()
+        suggestion = [d for d in suggestion if not (d["sug"] in seen or seen.add(d["sug"]))]
+        
+        # print(f"RAW Answer Reasoning Remove Dup: {answer}")
+        
+        for item in suggestion:
+            trip_sug = await self.convert_triplet(item['sug'], history)
+            
+            item["triplet"] = trip_sug[0] #json.loads(trip_sug[0])
+        
+        return suggestion

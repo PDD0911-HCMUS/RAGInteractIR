@@ -4,8 +4,8 @@ from typing import Optional, List, Tuple, Literal
 
 from lmdeploy import PytorchEngineConfig, pipeline
 
-# MODEL_NAME = "Qwen/Qwen2-VL-2B-Instruct"
-MODEL_NAME = "Qwen/Qwen2.5-VL-3B-Instruct"
+MODEL_NAME = "Qwen/Qwen2-VL-2B-Instruct"
+# MODEL_NAME = "Qwen/Qwen2.5-VL-3B-Instruct"
 
 Role = Literal["user", "assistant", "system"]
 RoleHistory = List[Tuple[Role, str]]
