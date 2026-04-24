@@ -290,6 +290,8 @@ class VisDialGPTCLIPService:
             input_query=input,
             db=retrieve
         )
+        
+        print(prompt)
 
         print(f"Reasoning History: {history}")
 
@@ -302,6 +304,8 @@ class VisDialGPTCLIPService:
         )
 
         suggestion = self._safe_json_loads(answer)
+        
+        print(f"Suggestion: {suggestion}")
 
         # Remove duplicated "sug"
         seen = set()

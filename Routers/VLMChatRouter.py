@@ -32,8 +32,8 @@ class VLMChatRouter:
         self.clip_model_name = "openai/clip-vit-base-patch32"
         self.clip_device = "cuda"
         self.greeting_model = "gpt-5.4"
-        self.triplet_model = "gpt-5.4-mini"
-        self.reasoning_model = "gpt-5.4-mini"
+        self.triplet_model = "gpt-5.4"
+        self.reasoning_model = "gpt-5.4"
 
         # Shared OpenAI service
         self.openai_service = OpenAIService(model_name=self.greeting_model)

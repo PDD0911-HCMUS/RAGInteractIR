@@ -136,3 +136,11 @@ Output format:
   ('user', 'a group of people are in the party; a group of people are playing video games'), 
   ('assistant', '{"triplets": "[{\\"subject\\":\\"a group of people\\",\\"relation\\":\\"are\\",\\"object\\":\\"in the party\\"},{\\"subject\\":\\"a group of people\\",\\"relation\\":\\"are\\",\\"object\\":\\"playing video games\\"}]", "suggestions": [{"sug": "a group of people playing video games", "explain": "The user is interested in a group of people playing video games, but the retrieved captions do not provide this detail.", "triplet": "[{\\"subject\\":\\"a group of people\\",\\"relation\\":\\"are\\",\\"object\\":\\"playing video games\\"}]"}, {"sug": "a group of people sitting in a living room", "explain": "The user is interested in a group of people sitting in a living room, but the retrieved captions do not provide this detail.", "triplet": "[{\\"subject\\":\\"a group of people\\",\\"relation\\":\\"are\\",\\"object\\":\\"sitting in a living room\\"}]"}]}'), ('user', 'a group of people are in the party; a group of people are playing video games; a group of people are sitting in a living room')
 ]
+
+
+Vieecj cần làm tiếp theo:
+- Suy nghĩ việc rewrite query
+- chỉnh lại cơ chế reasoning 
+  - giữ nguyên text -> tăng thêm số lượng
+  - thêm hình ảnh
+- kiểm tra lại luồng tổng quát
