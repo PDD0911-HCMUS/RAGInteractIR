@@ -1,6 +1,9 @@
 import json
+import os
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Union
+from PIL import Image
+import matplotlib.pyplot as plt
 
 
 class VisDialAnnotation:
@@ -142,9 +145,9 @@ class VisDialAnnotation:
             result["rounds"].append(turn_result)
 
         if return_as_string:
-            return self._format_script(result, include_answer_options=include_answer_options)
+            return self._format_script(result, include_answer_options=include_answer_options), item.get("image_id")
 
-        return result
+        return result, item.get("image_id")
 
     def _format_script(self, script_data: Dict[str, Any], include_answer_options: bool = False) -> str:
         """
@@ -192,19 +195,28 @@ class VisDialAnnotation:
         
 if __name__ == "__main__":
     visdial = VisDialAnnotation("/home/map4/ThisPC/RAGInteractIR/datasets/VisDial/visdial_1.0_train.json")
-
+    
+    image_root = "/home/map4/ThisPC/RAGInteractIR/datasets/MSCOCO"
+    with open("/home/map4/ThisPC/RAGInteractIR/datasets/VisDial/coco2014_id_to_relpath.json", "r") as f:
+        coco_path = json.load(f)
+    
     print(visdial.get_meta())
-    print(len(visdial))
     
     # item = visdial.get_dialog_item(10)
     # print(item)
     
     
-    script_text = visdial.get_script(
-        index=789,
+    script_text, image_id = visdial.get_script(
+        index=235,
         include_answer_options=False,
         return_as_string=True
     )
-
+    
+    
+    print(f"image path: {coco_path[str(image_id)]}")
     print(script_text)
+    
+    image = Image.open(os.path.join(image_root, coco_path[str(image_id)]))
+    plt.imshow(image)
+    plt.show()
     
