@@ -234,6 +234,22 @@ class VisDialGPTCLIPService:
 
         return "; ".join(queries)
 
+    def build_dial(self, suggestion, query):
+        """
+        - Ta cần xác định được đâu là respond của LLMs và query User.
+        - Ta sẽ nối lại thành (Sg_i, Query_i, ...) -> được gọi là 1 context dialouge.
+        - Việc cần xử lý ở FE sẽ là thu thập các cấu trúc đầu vào.
+        - Sử dụng một Promt LLMs để xác đinh:
+            - sự thay đổi của hội thoại
+            - trích xuất keywords
+            - tóm tắt nội dung
+            -> CoT để re-write lại thành 1 query
+            -> sử dụng cái này để suy luận
+        """
+        
+        
+        pass
+    
     def _safe_json_loads(self, text: str) -> Any:
         """
         Safe JSON parsing helper with a clearer error.

@@ -57,19 +57,22 @@ cmd:
 mklink /D F:\RAGInteractIR\datasets\MSCOCO F:\MSCOCO (tạo symlink)
 
 [
-  ('system', 'You are the Vision-Language Model.'), 
-  ('assistant', 'I am a large language model created by Alibaba Cloud.'), 
-  ('user', 'a group people in the party'), 
-  ('assistant', 
-    '{
-      "triplets": "[{\\"subject\\":\\"a group of people\\",\\"relation\\":\\"are\\",\\"object\\":\\"in the party\\"}]", 
+  ('system', 'You are a helpful vision-language assistant.'), 
+  ('assistant', 'Hello! I’m ChatGPT, an AI assistant created by OpenAI. I can help answer questions, explain concepts, write and edit text, brainstorm ideas, and more.'), 
+  ('user', 'a herd of sheep standing next to each other on a dirt field'), 
+  ('assistant', '
+    {
+      "triplets": "[
+        {\\"subject\\":\\"a herd of sheep\\",\\"relation\\":\\"standing next to\\",\\"object\\":\\"each other\\"},
+        {\\"subject\\":\\"a herd of sheep\\",\\"relation\\":\\"on\\",\\"object\\":\\"a dirt field\\"}
+      ]", 
       "suggestions": [
-        {"sug": "a group of people playing video games", "explain": "The user is interested in a group of people playing video games, not just sitting around or eating.", 
-        "triplet": "[{\\"subject\\":\\"a group of people\\",\\"relation\\":\\"are\\",\\"object\\":\\"playing video games\\"}]"}, 
-        {"sug": "a group of people in a living room", "explain": "The user is looking for a group of people in a living room, not just a group of people sitting at a table or in a house.", 
-        "triplet": "[{\\"subject\\":\\"a group of people\\",\\"relation\\":\\"in\\",\\"object\\":\\"a living room\\"}]"}]}'), 
-  ('user', 'a group of people are in the party; a group of people are playing video games'), 
-  ('assistant', '{"triplets": "[{\\"subject\\":\\"a group of people\\",\\"relation\\":\\"are\\",\\"object\\":\\"in the party\\"},{\\"subject\\":\\"a group of people\\",\\"relation\\":\\"are\\",\\"object\\":\\"playing video games\\"}]", "suggestions": [{"sug": "a group of people playing video games", "explain": "The user is interested in a group of people playing video games, but the retrieved captions do not provide this detail.", "triplet": "[{\\"subject\\":\\"a group of people\\",\\"relation\\":\\"are\\",\\"object\\":\\"playing video games\\"}]"}, {"sug": "a group of people sitting in a living room", "explain": "The user is interested in a group of people sitting in a living room, but the retrieved captions do not provide this detail.", "triplet": "[{\\"subject\\":\\"a group of people\\",\\"relation\\":\\"are\\",\\"object\\":\\"sitting in a living room\\"}]"}]}'), ('user', 'a group of people are in the party; a group of people are playing video games; a group of people are sitting in a living room')
+        {"sug": "white sheep standing together on dirt field", "explain": "Adds a supported animal color detail while keeping the group-on-dirt-field scene.", "triplet": "[{\\"subject\\":\\"white sheep\\",\\"relation\\":\\"standing on\\",\\"object\\":\\"dirt field\\"}]"}, 
+        {"sug": "flock of sheep standing side by side in open field", "explain": "Refines the arrangement of the animals with a clear side-by-side grouping.", "triplet": "[{\\"subject\\":\\"flock of sheep\\",\\"relation\\":\\"standing in\\",\\"object\\":\\"open field\\"}]"}, 
+        {"sug": "sheep herd on dry grassy dirt field", "explain": "Adds a dry field texture that is consistent with multiple retrieved captions.", "triplet": "[{\\"subject\\":\\"sheep herd\\",\\"relation\\":\\"on\\",\\"object\\":\\"dry grassy dirt field\\"}]"}
+      ]
+    }'), 
+  ('user', 'a herd of sheep standing next to each other; a herd of sheep on a dirt field; sheep herd on dry grassy dirt field')
 ]
 
 
