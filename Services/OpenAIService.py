@@ -1,4 +1,5 @@
 import os
+from pathlib import Path
 import threading
 import traceback
 from typing import Optional, List, Tuple, Literal, Dict, Any
@@ -33,12 +34,24 @@ class OpenAIService:
         api_key: Optional[str] = None,
     ) -> None:
         self.model_name = model_name
-        self.api_key = api_key or os.environ.get("OPENAI_API_KEY")
+        self.api_key = api_key or self._load_api_key()
 
         if not self.api_key:
             raise ValueError(
-                "OPENAI_API_KEY is missing. Please export it before using OpenAIService."
+                "OPENAI_API_KEY is missing. Export it or create an OpenAI.key file."
             )
+
+    @staticmethod
+    def _load_api_key() -> Optional[str]:
+        api_key = os.environ.get("OPENAI_API_KEY")
+        if api_key:
+            return api_key.strip()
+
+        key_path = Path(__file__).resolve().parents[1] / "OpenAI.key"
+        if key_path.is_file():
+            return key_path.read_text(encoding="utf-8").strip()
+
+        return None
 
     @classmethod
     def _get_or_create_shared_client(cls, api_key: str) -> OpenAI:
@@ -49,9 +62,7 @@ class OpenAIService:
             with cls._lock:
                 if cls._client is None:
                     try:
-                        print(">>> before OpenAI client init")
                         cls._client = OpenAI(api_key=api_key)
-                        print(">>> after OpenAI client init")
                     except Exception as e:
                         print(">>> OpenAI client init failed:", repr(e))
                         traceback.print_exc()

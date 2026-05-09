@@ -1,8 +1,9 @@
 import json
+import logging
+import os
 import time
 from typing import Optional, List, Tuple, Literal, Any
 
-import faiss
 import numpy as np
 import torch
 import torch.nn.functional as F
@@ -27,6 +28,7 @@ from Services.OpenAIService import OpenAIService
 
 Role = Literal["system", "user", "assistant"]
 RoleHistory = List[Tuple[Role, str]]
+logger = logging.getLogger("rair")
 
 
 class VisDialGPTCLIPService:
@@ -49,7 +51,9 @@ class VisDialGPTCLIPService:
         self.vlm = vlm
         self.device = device
 
-        self.tokenizer, self.processor, self.model = self.create_vlm()
+        self.tokenizer = None
+        self.processor = None
+        self.model = None
         self.prompt = PromptCollectionService()
 
         # Shared OpenAI service instance
@@ -60,16 +64,34 @@ class VisDialGPTCLIPService:
         self.reasoning_model = reasoning_model
 
     def create_vlm(self):
-        tokenizer = AutoTokenizer.from_pretrained(self.vlm)
-        model = CLIPModel.from_pretrained(self.vlm).to(self.device).eval()
-        processor = AutoProcessor.from_pretrained(self.vlm)
+        local_files_only = os.environ.get("HF_LOCAL_FILES_ONLY", "1") != "0"
+        tokenizer = AutoTokenizer.from_pretrained(
+            self.vlm,
+            local_files_only=local_files_only,
+        )
+        model = CLIPModel.from_pretrained(
+            self.vlm,
+            local_files_only=local_files_only,
+        ).to(self.device).eval()
+        processor = AutoProcessor.from_pretrained(
+            self.vlm,
+            local_files_only=local_files_only,
+        )
         return tokenizer, processor, model
+
+    def _ensure_vlm_loaded(self):
+        if self.tokenizer is None or self.processor is None or self.model is None:
+            self.tokenizer, self.processor, self.model = self.create_vlm()
+
+    def preload_model(self):
+        self._ensure_vlm_loaded()
 
     @torch.no_grad()
     def embed_texts(self, texts):
         """
         Encode text list into normalized CLIP text embeddings.
         """
+        self._ensure_vlm_loaded()
         inputs = self.tokenizer(
             text=texts,
             padding=True,
@@ -86,6 +108,8 @@ class VisDialGPTCLIPService:
         """
         Build FAISS gallery from VisDialCLIPCapDial table.
         """
+        import faiss
+
         console = Console()
         start_total = time.perf_counter()
 
@@ -259,11 +283,33 @@ class VisDialGPTCLIPService:
         except Exception as e:
             raise ValueError(f"Invalid JSON returned by LLM: {text}") from e
 
+    async def rewrite_query(self, context_state: Any):
+        """
+        Rewrite the interaction context into a natural-language retrieval query.
+        """
+        context_json = json.dumps(context_state, ensure_ascii=False, indent=2)
+        prompt = self.prompt.rewrite_context.format(context=context_json)
+
+        start = time.time()
+        answer = self.openai_service.generate_answer(
+            user_prompt=prompt,
+            history=None,
+            model=self.reasoning_model,
+            store=False,
+        )
+        latency_ms = int((time.time() - start) * 1000)
+
+        data = self._safe_json_loads(answer)
+        rewritten_query = str(data.get("rewritten_query", "")).strip()
+        if not rewritten_query:
+            raise ValueError(f"Missing rewritten_query in LLM response: {answer}")
+
+        return rewritten_query, latency_ms
+
     async def convert_triplet(self, text: str, history: Optional[RoleHistory]):
         """
         Use OpenAI to convert user text into triplet JSON.
         """
-        print(f"Input Convert Triplet: {text}")
 
         prompt = self.prompt.convert_triplet.format(text=text)
 
@@ -280,16 +326,34 @@ class VisDialGPTCLIPService:
 
         return answer, latency_ms
 
-    async def RAG_faiss_retrieval(self, history, gallery, text):
+    async def RAG_faiss_retrieval(self, history, gallery, text, triplets=None):
         """
         1. Retrieve by FAISS
         2. Ask OpenAI to generate query refinement suggestions
         """
-        print(f"RAG Text Input: {text}")
-
         image_ids, captions, scores = self.faiss_search(text, gallery, top_k=20)
+        top_results = [
+            {
+                "rank": rank,
+                "image_id": image_id,
+                "score": score,
+                "caption": caption,
+            }
+            for rank, (image_id, score, caption) in enumerate(
+                zip(image_ids[:5], scores[:5], captions[:5]),
+                start=1,
+            )
+        ]
+        logger.info(
+            "RAIR retrieve top5:\n%s",
+            json.dumps(top_results, ensure_ascii=False, indent=2),
+        )
 
-        answer = await self.reasoning(history, text, captions)
+        answer = await self.reasoning(history, text, captions, triplets=triplets)
+        logger.info(
+            "RAIR suggestions:\n%s",
+            json.dumps(answer, ensure_ascii=False, indent=2),
+        )
 
         return {
             "id": image_ids,
@@ -298,18 +362,15 @@ class VisDialGPTCLIPService:
             "suggest": answer
         }
 
-    async def reasoning(self, history, input, retrieve):
+    async def reasoning(self, history, input, retrieve, triplets=None):
         """
         Use OpenAI to generate refinement suggestions based on retrieved captions.
         """
         prompt = self.prompt.reason.format(
             input_query=input,
+            triplets=json.dumps(triplets or [], ensure_ascii=False),
             db=retrieve
         )
-        
-        print(prompt)
-
-        print(f"Reasoning History: {history}")
 
         answer = self.openai_service.generate_answer(
             user_prompt=prompt,
@@ -320,8 +381,6 @@ class VisDialGPTCLIPService:
         )
 
         suggestion = self._safe_json_loads(answer)
-        
-        print(f"Suggestion: {suggestion}")
 
         # Remove duplicated "sug"
         seen = set()
@@ -329,15 +388,5 @@ class VisDialGPTCLIPService:
             d for d in suggestion
             if not (d.get("sug") in seen or seen.add(d.get("sug")))
         ]
-
-        # Convert each suggestion to triplet
-        for item in suggestion:
-            sug_text = item.get("sug", "").strip()
-            if not sug_text:
-                item["triplet"] = "[]"
-                continue
-
-            trip_sug, _ = await self.convert_triplet(sug_text, history)
-            item["triplet"] = trip_sug
 
         return suggestion

@@ -2,6 +2,7 @@ import os
 import uuid
 import time
 import json
+import logging
 from typing import Optional
 
 from fastapi import APIRouter, HTTPException
@@ -11,6 +12,9 @@ from Services.VisDialGPTCLIPService import VisDialGPTCLIPService
 from Services.OpenAIService import OpenAIService
 from Services.PromptCollectionService import PromptCollectionService
 from Storage.ConversationStore import ConversationStore
+
+
+logger = logging.getLogger("rair")
 
 
 class MessageRequest(BaseModel):
@@ -30,25 +34,15 @@ class VLMChatRouter:
 
         # Configurable runtime
         self.clip_model_name = "openai/clip-vit-base-patch32"
-        self.clip_device = "cuda"
+        self.clip_device = "cpu" #"cuda"
         self.greeting_model = "gpt-5.4"
         self.triplet_model = "gpt-5.4"
         self.reasoning_model = "gpt-5.4"
 
-        # Shared OpenAI service
-        self.openai_service = OpenAIService(model_name=self.greeting_model)
-
-        # Retrieval service
-        self.visdial_serve = VisDialGPTCLIPService(
-            vlm=self.clip_model_name,
-            device=self.clip_device,
-            openai_service=self.openai_service,
-            triplet_model=self.triplet_model,
-            reasoning_model=self.reasoning_model,
-        )
-
         self.prompt = PromptCollectionService()
-        self.gallery = self.visdial_serve.build_gallery()
+        self.openai_service: Optional[OpenAIService] = None
+        self.visdial_serve: Optional[VisDialGPTCLIPService] = None
+        self.gallery = None
 
         # ---------------- API ---------------- #
         self.router = APIRouter(prefix="/vlm", tags=["VLM"])
@@ -74,6 +68,45 @@ class VLMChatRouter:
             summary="Get conversation state (debug)",
         )
 
+    def _get_openai_service(self) -> OpenAIService:
+        if self.openai_service is None:
+            self.openai_service = OpenAIService(model_name=self.greeting_model)
+        return self.openai_service
+
+    def _get_visdial_service(self) -> VisDialGPTCLIPService:
+        if self.visdial_serve is None:
+            self.visdial_serve = VisDialGPTCLIPService(
+                vlm=self.clip_model_name,
+                device=self.clip_device,
+                openai_service=self._get_openai_service(),
+                triplet_model=self.triplet_model,
+                reasoning_model=self.reasoning_model,
+            )
+        return self.visdial_serve
+
+    def _get_gallery(self):
+        if self.gallery is None:
+            self.gallery = self._get_visdial_service().build_gallery()
+        return self.gallery
+
+    def _build_context_state(self, convo, latest_user_message: Optional[str] = None):
+        return {
+            "initial_query": getattr(convo, "initial_query", None),
+            "feedback_pairs": getattr(convo, "feedback_pairs", []),
+            "pending_suggestions": getattr(convo, "pending_suggestions", []),
+            "latest_user_message": latest_user_message,
+        }
+
+    def preload_gallery(self) -> None:
+        if os.environ.get("PRELOAD_CLIP_MODEL", "0") == "1":
+            logger.info("Preloading CLIP model")
+            self._get_visdial_service().preload_model()
+
+        logger.info("Preloading VisDial gallery")
+        self._get_gallery()
+
+        logger.info("VisDial gallery ready")
+
     async def create_conversation(self):
         """
         GET /api/v1/vlm/conversations
@@ -91,7 +124,7 @@ class VLMChatRouter:
 
         # Greeting via OpenAI, not local Qwen
         start = time.time()
-        caption = self.openai_service.generate_answer(
+        caption = self._get_openai_service().generate_answer(
             user_prompt=self.prompt.greeting,
             history=None,
             model=self.greeting_model,
@@ -124,6 +157,10 @@ class VLMChatRouter:
         return {
             "conversation_id": convo.conversation_id,
             "history": getattr(convo, "history", []),
+            "initial_query": getattr(convo, "initial_query", None),
+            "feedback_pairs": getattr(convo, "feedback_pairs", []),
+            "pending_suggestions": getattr(convo, "pending_suggestions", []),
+            "context_state": self._build_context_state(convo),
         }
 
     async def send_message(self, conversation_id: str, req: MessageRequest):
@@ -140,40 +177,60 @@ class VLMChatRouter:
         if not user_message:
             raise HTTPException(status_code=400, detail="Message must not be empty")
 
-        print(f"User Message: {user_message}")
+        if convo.initial_query is None:
+            self.store.set_initial_query(conversation_id, user_message)
+        else:
+            self.store.append_feedback_pair(conversation_id, user_message)
 
-        # Snapshot current history BEFORE modifying it
-        history_before = list(convo.history)
+        context_state = self._build_context_state(convo, latest_user_message=user_message)
+        logger.info(
+            "RAIR turn: conversation=%s feedback_pairs=%d user_message=%s",
+            conversation_id,
+            len(context_state["feedback_pairs"]),
+            user_message,
+        )
+        logger.info(
+            "Context State C_t:\n%s",
+            json.dumps(context_state, ensure_ascii=False, indent=2),
+        )
 
-        # Step 1: Convert to triplets
+        # Step 1: Rewrite C_t into a natural-language retrieval query
         try:
-            triplets, latency_ms = await self.visdial_serve.convert_triplet(
-                text=user_message,
-                history=history_before,
+            visdial_serve = self._get_visdial_service()
+            rewritten_query, rewrite_latency_ms = await visdial_serve.rewrite_query(
+                context_state=context_state,
             )
-            print(f"History Before: {history_before}")
-            print(f"Triplet Answer: {triplets}")
+            logger.info(
+                "Rewritten query: %s latency_ms=%d",
+                rewritten_query,
+                rewrite_latency_ms,
+            )
+        except Exception as e:
+            raise HTTPException(
+                status_code=500,
+                detail=f"Context rewrite failed: {repr(e)}"
+            ) from e
 
-            triplet_json = json.loads(triplets)
+        # Step 2: Extract structured triplets for reasoning constraints
+        try:
+            triplets_raw, triplet_latency_ms = await visdial_serve.convert_triplet(
+                text=rewritten_query,
+                history=None,
+            )
+            triplets = json.loads(triplets_raw)
+            logger.info(
+                "Reasoning triplets:\n%s",
+                json.dumps(triplets, ensure_ascii=False, indent=2),
+            )
         except json.JSONDecodeError as e:
             raise HTTPException(
                 status_code=500,
-                detail=f"Triplet response is not valid JSON: {triplets}"
+                detail=f"Triplet response is not valid JSON: {triplets_raw}"
             ) from e
         except Exception as e:
             raise HTTPException(
                 status_code=500,
-                detail=f"Triplet conversion failed: {repr(e)}"
-            ) from e
-
-        # Step 2: Build retrieval query
-        try:
-            queries = await self.visdial_serve.build_query(answer=triplet_json)
-            print(f"Queries Built: {queries}")
-        except Exception as e:
-            raise HTTPException(
-                status_code=500,
-                detail=f"Failed to build query from triplets: {repr(e)}"
+                detail=f"Triplet extraction failed: {repr(e)}"
             ) from e
 
         # Step 3: Append user message to conversation history
@@ -183,12 +240,13 @@ class VLMChatRouter:
         convo_after_user = self.store.get(conversation_id)
         history_for_reasoning = list(convo_after_user.history)
 
-        # Step 4: Retrieval + reasoning
+        # Step 4: Retrieval with text query + reasoning with triplets
         try:
-            retrieve = await self.visdial_serve.RAG_faiss_retrieval(
+            retrieve = await visdial_serve.RAG_faiss_retrieval(
                 history_for_reasoning,
-                self.gallery,
-                queries,
+                self._get_gallery(),
+                rewritten_query,
+                triplets=triplets,
             )
         except Exception as e:
             raise HTTPException(
@@ -199,23 +257,72 @@ class VLMChatRouter:
         # Step 5: Append assistant payload
         assistant_payload = json.dumps(
             {
+                "rewritten_query": rewritten_query,
                 "triplets": triplets,
                 "suggestions": retrieve.get("suggest", []),
             },
             ensure_ascii=False,
         )
         self.store.append_message(conversation_id, "assistant", assistant_payload)
+        self.store.set_pending_suggestions(
+            conversation_id,
+            retrieve.get("suggest", []),
+        )
 
         # Re-fetch to get the latest length accurately
         convo_final = self.store.get(conversation_id)
+        trace = {
+            "context_state": self._build_context_state(
+                convo_final,
+                latest_user_message=user_message,
+            ),
+            "rewritten_query": rewritten_query,
+            "triplets": triplets,
+            "top5": [
+                {
+                    "rank": rank,
+                    "image_id": image_id,
+                    "score": score,
+                    "caption": caption,
+                }
+                for rank, (image_id, score, caption) in enumerate(
+                    zip(
+                        retrieve.get("id", [])[:5],
+                        retrieve.get("score", [])[:5],
+                        retrieve.get("text", [])[:5],
+                    ),
+                    start=1,
+                )
+            ],
+            "suggestions": retrieve.get("suggest", []),
+        }
+        logger.info(
+            "RAIR turn complete: conversation=%s rewrite_ms=%d triplet_ms=%d suggestions=%d",
+            conversation_id,
+            rewrite_latency_ms,
+            triplet_latency_ms,
+            len(retrieve.get("suggest", [])),
+        )
 
         return {
             "conversation_id": conversation_id,
-            "answer": triplets,
+            "answer": rewritten_query,
+            "rewritten_query": rewritten_query,
+            "triplets": triplets,
             "history_length": len(convo_final.history) if convo_final else 0,
+            "initial_query": getattr(convo_final, "initial_query", None),
+            "feedback_pairs": getattr(convo_final, "feedback_pairs", []),
+            "pending_suggestions": getattr(convo_final, "pending_suggestions", []),
+            "context_state": self._build_context_state(
+                convo_final,
+                latest_user_message=user_message,
+            ),
+            "trace": trace,
             "retrieve": retrieve,
             "meta": {
-                "latency_ms": latency_ms,
+                "rewrite_latency_ms": rewrite_latency_ms,
+                "triplet_latency_ms": triplet_latency_ms,
+                "rewrite_model": self.reasoning_model,
                 "triplet_model": self.triplet_model,
                 "reasoning_model": self.reasoning_model,
             },

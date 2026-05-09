@@ -16,3 +16,6 @@ RetrievalSystemTraffic.sql
 datasets/imageDemo
 
 *.key
+
+.vscode
+problem_report.txt

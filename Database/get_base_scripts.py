@@ -194,10 +194,10 @@ class VisDialAnnotation:
         }
         
 if __name__ == "__main__":
-    visdial = VisDialAnnotation("/home/map4/ThisPC/RAGInteractIR/datasets/VisDial/visdial_1.0_train.json")
+    visdial = VisDialAnnotation("/Users/duypd/MyPC/MyProject/RAGInteractIR/datasets/VisDial/visdial_1.0_train.json")
     
-    image_root = "/home/map4/ThisPC/RAGInteractIR/datasets/MSCOCO"
-    with open("/home/map4/ThisPC/RAGInteractIR/datasets/VisDial/coco2014_id_to_relpath.json", "r") as f:
+    image_root = "/Users/duypd/MyPC/MyProject/RAGInteractIR/datasets/MSCOCO"
+    with open("/Users/duypd/MyPC/MyProject/RAGInteractIR/datasets/VisDial/coco2014_id_to_relpath.json", "r") as f:
         coco_path = json.load(f)
     
     print(visdial.get_meta())
@@ -207,7 +207,7 @@ if __name__ == "__main__":
     
     
     script_text, image_id = visdial.get_script(
-        index=235,
+        index=375,
         include_answer_options=False,
         return_as_string=True
     )
