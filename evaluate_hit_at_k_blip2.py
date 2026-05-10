@@ -93,6 +93,7 @@ async def evaluate_sample(
     ks: List[int],
     turns: int,
     use_blip2: bool,
+    early_stop_k: Optional[int],
 ) -> Dict[str, Any]:
     conversation_id = str(uuid.uuid4())
     router.store.create(conversation_id=conversation_id)
@@ -126,6 +127,7 @@ async def evaluate_sample(
             "rewritten_query": response.get("rewritten_query"),
             "triplets": response.get("triplets", []),
             "hits": hits,
+            "early_stopped": False,
             "top_ids": retrieved_ids[: max(ks)],
             "suggestions": response.get("pending_suggestions", []),
             "simulated_answer": None,
@@ -137,6 +139,21 @@ async def evaluate_sample(
             turn_idx,
             hits,
         )
+
+        should_stop = (
+            early_stop_k is not None
+            and hits.get(f"hit@{early_stop_k}", 0) == 1
+        )
+        if should_stop:
+            turn_result["early_stopped"] = True
+            sample_result["turns"].append(turn_result)
+            logger.info(
+                "Early stop image_id=%s turn=%d hit@%d=1",
+                sample.get("image_id"),
+                turn_idx,
+                early_stop_k,
+            )
+            break
 
         if turn_idx < turns - 1:
             if not use_blip2:
@@ -215,6 +232,7 @@ async def main_async(args: argparse.Namespace) -> None:
             ks=args.k,
             turns=args.turns,
             use_blip2=not args.no_blip2,
+            early_stop_k=args.early_stop_k,
         )
         results.append(result)
 
@@ -253,6 +271,12 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--turns", type=int, default=2)
     parser.add_argument("--k", type=int, nargs="+", default=[1, 5, 10, 20])
     parser.add_argument(
+        "--early-stop-k",
+        type=int,
+        default=20,
+        help="Stop a sample once hit@K is 1. Use --early-stop-k 0 to disable.",
+    )
+    parser.add_argument(
         "--no-blip2",
         action="store_true",
         help="Run only the initial RAIR turns available without BLIP-2 feedback.",
@@ -273,6 +297,11 @@ def parse_args() -> argparse.Namespace:
 
 def main() -> None:
     args = parse_args()
+    if args.early_stop_k == 0:
+        args.early_stop_k = None
+    elif args.early_stop_k not in args.k:
+        args.k = sorted(set(args.k + [args.early_stop_k]))
+
     logging.basicConfig(
         level=getattr(logging, args.log_level.upper(), logging.INFO),
         format="%(asctime)s %(levelname)s [%(name)s] %(message)s",
