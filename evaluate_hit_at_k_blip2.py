@@ -225,15 +225,30 @@ async def main_async(args: argparse.Namespace) -> None:
             len(groundtruth),
             sample.get("image_id"),
         )
-        result = await evaluate_sample(
-            router=router,
-            simulator=simulator,
-            sample=sample,
-            ks=args.k,
-            turns=args.turns,
-            use_blip2=not args.no_blip2,
-            early_stop_k=args.early_stop_k,
-        )
+        try:
+            result = await evaluate_sample(
+                router=router,
+                simulator=simulator,
+                sample=sample,
+                ks=args.k,
+                turns=args.turns,
+                use_blip2=not args.no_blip2,
+                early_stop_k=args.early_stop_k,
+            )
+        except Exception as exc:
+            if not args.continue_on_error:
+                raise
+            logger.exception(
+                "Sample failed image_id=%s; continuing because --continue-on-error is set",
+                sample.get("image_id"),
+            )
+            result = {
+                "image_id": sample.get("image_id"),
+                "image_path": sample.get("image_path"),
+                "initial_query": sample.get("query"),
+                "turns": [],
+                "error": repr(exc),
+            }
         results.append(result)
 
         if args.output_jsonl:
@@ -292,6 +307,11 @@ def parse_args() -> argparse.Namespace:
         help="Use only local Hugging Face cache for BLIP-2.",
     )
     parser.add_argument("--log-level", default="INFO")
+    parser.add_argument(
+        "--continue-on-error",
+        action="store_true",
+        help="Record failed samples and continue evaluating the next sample.",
+    )
     return parser.parse_args()
 
 

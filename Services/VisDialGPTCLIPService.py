@@ -1,6 +1,7 @@
 import json
 import logging
 import os
+import re
 import time
 from typing import Optional, List, Tuple, Literal, Any
 
@@ -278,10 +279,29 @@ class VisDialGPTCLIPService:
         """
         Safe JSON parsing helper with a clearer error.
         """
+        if not isinstance(text, str):
+            return text
+
+        cleaned = text.strip()
+        cleaned = cleaned.removeprefix("\ufeff").strip()
+        cleaned = re.sub(r"^```(?:json)?\s*", "", cleaned, flags=re.IGNORECASE)
+        cleaned = re.sub(r"\s*```$", "", cleaned)
+
         try:
-            return json.loads(text)
-        except Exception as e:
-            raise ValueError(f"Invalid JSON returned by LLM: {text}") from e
+            return json.loads(cleaned)
+        except Exception as direct_error:
+            decoder = json.JSONDecoder()
+            starts = [idx for idx in (cleaned.find("["), cleaned.find("{")) if idx >= 0]
+            for start in sorted(starts):
+                try:
+                    value, _ = decoder.raw_decode(cleaned[start:])
+                    return value
+                except Exception:
+                    continue
+
+            raise ValueError(
+                f"Invalid JSON returned by LLM: {text!r}"
+            ) from direct_error
 
     async def rewrite_query(self, context_state: Any):
         """
