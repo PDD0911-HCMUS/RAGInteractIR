@@ -17,6 +17,22 @@ from Storage.ConversationStore import ConversationStore
 logger = logging.getLogger("rair")
 
 
+def resolve_torch_device(env_name: str, default: str = "cpu") -> str:
+    configured = os.environ.get(env_name)
+    if configured:
+        return configured
+
+    try:
+        import torch
+
+        if torch.cuda.is_available():
+            return "cuda"
+    except Exception:
+        pass
+
+    return default
+
+
 class MessageRequest(BaseModel):
     message: str
 
@@ -34,9 +50,8 @@ class VLMChatRouter:
 
         # Configurable runtime
         self.clip_model_name = "openai/clip-vit-base-patch32"
-        self.clip_device = "cpu" #"cuda"
+        self.clip_device = resolve_torch_device("CLIP_DEVICE")
         self.greeting_model = "gpt-5.4"
-        self.triplet_model = "gpt-5.4"
         self.reasoning_model = "gpt-5.4"
 
         self.prompt = PromptCollectionService()
@@ -79,7 +94,6 @@ class VLMChatRouter:
                 vlm=self.clip_model_name,
                 device=self.clip_device,
                 openai_service=self._get_openai_service(),
-                triplet_model=self.triplet_model,
                 reasoning_model=self.reasoning_model,
             )
         return self.visdial_serve
@@ -211,42 +225,19 @@ class VLMChatRouter:
                 detail=f"Context rewrite failed: {repr(e)}"
             ) from e
 
-        # Step 2: Extract structured triplets for reasoning constraints
-        try:
-            triplets_raw, triplet_latency_ms = await visdial_serve.convert_triplet(
-                text=rewritten_query,
-                history=None,
-            )
-            triplets = json.loads(triplets_raw)
-            logger.info(
-                "Reasoning triplets:\n%s",
-                json.dumps(triplets, ensure_ascii=False, indent=2),
-            )
-        except json.JSONDecodeError as e:
-            raise HTTPException(
-                status_code=500,
-                detail=f"Triplet response is not valid JSON: {triplets_raw}"
-            ) from e
-        except Exception as e:
-            raise HTTPException(
-                status_code=500,
-                detail=f"Triplet extraction failed: {repr(e)}"
-            ) from e
-
-        # Step 3: Append user message to conversation history
+        # Step 2: Append user message to conversation history
         self.store.append_message(conversation_id, "user", user_message)
 
         # For reasoning/retrieval, use history that includes the new user turn
         convo_after_user = self.store.get(conversation_id)
         history_for_reasoning = list(convo_after_user.history)
 
-        # Step 4: Retrieval with text query + reasoning with triplets
+        # Step 3: Retrieval with text query + candidate-grounded reasoning
         try:
             retrieve = await visdial_serve.RAG_faiss_retrieval(
                 history_for_reasoning,
                 self._get_gallery(),
                 rewritten_query,
-                triplets=triplets,
             )
         except Exception as e:
             raise HTTPException(
@@ -254,11 +245,11 @@ class VLMChatRouter:
                 detail=f"RAG retrieval/reasoning failed: {repr(e)}"
             ) from e
 
-        # Step 5: Append assistant payload
+        # Step 4: Append assistant payload
         assistant_payload = json.dumps(
             {
                 "rewritten_query": rewritten_query,
-                "triplets": triplets,
+                "diagnosis": retrieve.get("diagnosis", {}),
                 "suggestions": retrieve.get("suggest", []),
             },
             ensure_ascii=False,
@@ -277,7 +268,8 @@ class VLMChatRouter:
                 latest_user_message=user_message,
             ),
             "rewritten_query": rewritten_query,
-            "triplets": triplets,
+            "candidate_evidence": retrieve.get("candidate_evidence", [])[:8],
+            "diagnosis": retrieve.get("diagnosis", {}),
             "top5": [
                 {
                     "rank": rank,
@@ -297,10 +289,9 @@ class VLMChatRouter:
             "suggestions": retrieve.get("suggest", []),
         }
         logger.info(
-            "RAIR turn complete: conversation=%s rewrite_ms=%d triplet_ms=%d suggestions=%d",
+            "RAIR turn complete: conversation=%s rewrite_ms=%d suggestions=%d",
             conversation_id,
             rewrite_latency_ms,
-            triplet_latency_ms,
             len(retrieve.get("suggest", [])),
         )
 
@@ -308,7 +299,7 @@ class VLMChatRouter:
             "conversation_id": conversation_id,
             "answer": rewritten_query,
             "rewritten_query": rewritten_query,
-            "triplets": triplets,
+            "diagnosis": retrieve.get("diagnosis", {}),
             "history_length": len(convo_final.history) if convo_final else 0,
             "initial_query": getattr(convo_final, "initial_query", None),
             "feedback_pairs": getattr(convo_final, "feedback_pairs", []),
@@ -321,9 +312,7 @@ class VLMChatRouter:
             "retrieve": retrieve,
             "meta": {
                 "rewrite_latency_ms": rewrite_latency_ms,
-                "triplet_latency_ms": triplet_latency_ms,
                 "rewrite_model": self.reasoning_model,
-                "triplet_model": self.triplet_model,
                 "reasoning_model": self.reasoning_model,
             },
         }

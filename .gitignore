@@ -21,3 +21,5 @@ datasets/imageDemo
 problem_report.txt
 hit_at_k_blip2_results_100_t5.jsonl
 hit_at_k_blip2_results.json
+
+*.json

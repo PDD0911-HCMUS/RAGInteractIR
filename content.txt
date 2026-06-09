@@ -82,3 +82,185 @@ Việc cần làm tiếp theo:
   - giữ nguyên text -> tăng thêm số lượng
   - thêm hình ảnh
 - kiểm tra lại luồng tổng quát
+
+VisDial dialogue 
+-> visual fact extraction 
+-> enriched target annotation 
+-> RAIR suggestion evaluation/simulation
+
+E1: baseline retrieval
+E2: RAIR vs baselines
+E3: multi-turn improvement
+E4: suggestion quality
+E5: diagnosis ablation
+
+
+E2 sẽ là:
+
+rewrite_only
+RAIR without facts
+RAIR full
+
+QAFS: Query-Aware Visual Fact Selection
+- Với query hiện tại q, một candidate image c_i, và tập visual facts của candidate đó:
+	F_i = {f_1, f_2, ..., f_n}
+
+	ta chọn top-m facts có điểm cao nhất:
+		S_i = TopM_f thuộc F_i score(f | q, c_i)
+C- ông thức score:
+	score(f | q, c_i) =
+	  α · sim_clip_text(q, f)
+	+ β · lexical_overlap(q, f)
+	+ γ · discriminativeness(f, C)
+	- δ · contradiction_penalty(f, q)
+	
+- Trong đó:
+	- sim_clip_text(q, f)
+	Độ tương đồng semantic giữa query và fact, tính bằng CLIP text embedding.
+
+	- lexical_overlap(q, f)
+	Tỷ lệ token overlap giữa query và fact.
+
+	- discriminativeness(f, C)
+	Mức độ fact giúp phân biệt candidate đó với các candidates khác. Fact càng hiếm trong top candidates thì điểm càng cao.
+
+	- contradiction_penalty(f, q)
+	Phạt nếu fact mâu thuẫn query, ví dụ:
+		query có inside, fact có outside
+		query có indoor, fact có outdoor
+		query có sitting, fact có standing
+
+- Tham số hiện tại:
+	α = 0.5
+	β = 0.3
+	γ = 0.2
+	δ = 0.5
+	top_m = 4
+
+Experiments:
+E1. Baseline Retrieval
+- Mục tiêu: xác định baseline trước khi có RAIR.
+- So sánh:
+	caption_clip
+	raw_enriched_concat
+	rewrite_only
+
+- Ý nghĩa:
+	caption_clip: CLIP retrieval bằng caption gốc.
+	raw_enriched_concat: caption + visual facts nối thẳng.
+	rewrite_only: LLM rewrite query, chưa có RAIR interaction.
+	
+- Kết luận hiện tại:
+	caption baseline khá mạnh.
+	raw facts concat làm tệ hơn.
+	GPT-4o rewrite-only cải thiện nhẹ so với caption.
+
+E2: One-Turn RAIR Comparison
+
+- Mục tiêu: kiểm tra RAIR trong một vòng interaction.
+- Luồng:
+	query -> retrieve candidates -> candidate evidence -> diagnosis/suggestions
+	-> oracle accept/no-op -> refined query -> retrieve again
+	
+- So sánh:
+	rewrite_only
+	rair_without_facts
+	rair_full
+	rair_full_qafs
+	
+- Ý nghĩa:
+	rewrite_only: không interaction.
+	rair_without_facts: RAIR chỉ dùng candidate captions.
+	rair_full: RAIR dùng captions + toàn bộ visual facts.
+	rair_full_qafs: RAIR dùng captions + facts đã lọc bằng QAFS.
+	
+- Metrics:
+	Hit@K, MRR, found_rate
+	accept_rate, no_op_rate
+	improved, worsened, lost_target, recovered_target
+
+- Kết luận hiện tại:
+	QAFS giúp suggestion sát target hơn.
+	Nhưng one-turn RAIR chưa vượt rewrite-only rõ ràng.
+	Vấn đề chính: suggestion append thô và dễ over-constrain.
+	
+E3: Turn-by-Turn Multi-Round RAIR
+
+- Mục tiêu: kiểm tra RAIR đúng bản chất interactive qua nhiều lượt.
+
+- Luồng:
+	Turn 0: initial query -> retrieve
+	Turn 1: RAIR suggestion -> oracle feedback -> retrieve
+	Turn 2: RAIR suggestion -> oracle feedback -> retrieve
+	Turn 3: RAIR suggestion -> oracle feedback -> retrieve
+
+- So sánh chính:
+	rair_without_facts
+	rair_full
+	rair_full_qafs
+
+- Có thể thêm baseline curve:
+	turn 0 = rewrite_only baseline
+
+- Metrics theo từng turn:
+	Hit@K_t
+	MRR_t
+	found_rate_t
+	rank_t
+	accept_rate_t
+	improved_rate_t
+	lost_target_rate_t
+
+- Câu hỏi cần trả lời:
+	RAIR có cải thiện dần qua turn không?
+	QAFS có giảm nhiễu qua nhiều turn không?
+	Multi-turn có recover target tốt hơn one-turn không?
+	Hay càng nhiều turn càng over-constrain?
+
+E4: Suggestion Quality Analysis
+
+- Mục tiêu: không chỉ đo retrieval, mà đo chất lượng suggestions.
+
+- Các chỉ số nên dùng:
+	coverage
+	target_overlap
+	contradiction_rate
+	unsupported_rate
+	accept_rate
+	rank_improvement_after_accept
+
+- Đề xuất cụ thể:
+	coverage: suggestion có chứa ít nhất một target fact/token không.
+	target_overlap: số token/fact overlap với target facts.
+	contradiction_rate: suggestion mâu thuẫn target facts.
+	unsupported_rate: suggestion không được support bởi candidate evidence.
+	accept_rate: oracle accept bao nhiêu suggestion.
+	rank_improvement_after_accept: khi accept thì rank có tốt lên không.
+
+- So sánh:
+	rair_without_facts
+	rair_full
+	rair_full_qafs
+
+- Câu hỏi cần trả lời:
+	Visual facts có làm suggestion cụ thể hơn không?
+	QAFS có làm suggestion ít nhiễu hơn không?
+	Suggestions được accept có thật sự cải thiện retrieval không?
+	Failure cases là do suggestion sai hay do CLIP không tận dụng được suggestion đúng?
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

@@ -31,25 +31,6 @@ from pycocotools.coco import COCO
 
 # print(data["378466"])
 
-from openai import OpenAI
-client = OpenAI()
-
-text = "dog is laying on bed, it next to a man and a man is watching TV"
-convert_triplet = (
-            "You are a Vision-Language Model.\n"
-            "User question: Convert the given sentence into (subject, relation, object) triplet.\n"
-            "Rules:\n"
-            "- Do NOT add explanations.\n"
-            "- Use lowercase for relation.\n"
-            "Return format:\n"
-            "[{{\"subject\":\"...\",\"relation\":\"...\",\"object\":\"...\"}}]\n"
-            "Sentence:\n"
-            "dog is laying on bed, it next to a man and a man is watching TV"
-        )
-
-response = client.responses.create(
-    model="gpt-5.4",
-    input=convert_triplet
-)
-
-print(response.output_text)
+if __name__ == "__main__":
+    text = "dog is laying on bed, it next to a man and a man is watching TV"
+    print("Scratch text:", text)

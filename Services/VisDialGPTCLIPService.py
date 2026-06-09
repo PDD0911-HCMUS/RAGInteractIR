@@ -25,6 +25,7 @@ from Database.db_session import SessionLocal
 from Entities.entities import VisDialCLIPCapDial
 from Services.PromptCollectionService import PromptCollectionService
 from Services.OpenAIService import OpenAIService
+from Services.TargetAnnotationService import TargetAnnotationService
 
 
 Role = Literal["system", "user", "assistant"]
@@ -36,7 +37,7 @@ class VisDialGPTCLIPService:
     """
     VisDial retrieval service using:
     - CLIP for text embedding + FAISS retrieval
-    - OpenAIService for triplet conversion and reasoning
+    - OpenAIService for candidate-grounded reasoning
 
     This class is adapted from the original VisDialCLIPService structure.
     """
@@ -46,7 +47,6 @@ class VisDialGPTCLIPService:
         vlm: str,
         device: str,
         openai_service: Optional[OpenAIService] = None,
-        triplet_model: Optional[str] = None,
         reasoning_model: Optional[str] = None,
     ) -> None:
         self.vlm = vlm
@@ -56,13 +56,19 @@ class VisDialGPTCLIPService:
         self.processor = None
         self.model = None
         self.prompt = PromptCollectionService()
+        self.annotation_service = TargetAnnotationService()
 
-        # Shared OpenAI service instance
-        self.openai_service = openai_service or OpenAIService(model_name="gpt-5.4-mini")
+        # Lazily used by rewrite/diagnosis paths. Retrieval-only baselines do not
+        # need an OpenAI client.
+        self.openai_service = openai_service
 
         # Optional per-task model override
-        self.triplet_model = triplet_model
         self.reasoning_model = reasoning_model
+
+    def _get_openai_service(self) -> OpenAIService:
+        if self.openai_service is None:
+            self.openai_service = OpenAIService(model_name=self.reasoning_model or "gpt-5.4-mini")
+        return self.openai_service
 
     def create_vlm(self):
         local_files_only = os.environ.get("HF_LOCAL_FILES_ONLY", "1") != "0"
@@ -240,24 +246,36 @@ class VisDialGPTCLIPService:
 
         return image_ids, captions, s
 
-    async def build_query(self, answer):
+    def build_candidate_evidence(self, image_ids, captions, scores, top_k=8):
         """
-        Convert list[dict] triplets into a compact retrieval query string.
-        Example:
-        [{"subject":"dog","relation":"on","object":"chair"}]
-        -> "dog on chair"
+        Build candidate-grounded evidence for RAIR diagnosis.
+        Each candidate is enriched with dialogue-derived visual facts when the
+        annotation layer has a matching image_path.
         """
-        queries = []
-        for item in answer:
-            subject = item.get("subject", "").strip()
-            relation = item.get("relation", "").strip()
-            obj = item.get("object", "").strip()
+        selected_ids = image_ids[:top_k]
+        annotations = self.annotation_service.get_by_image_paths(selected_ids)
 
-            query = f"{subject} {relation} {obj}".strip()
-            if query:
-                queries.append(query)
+        evidence = []
+        for rank, (image_id, caption, score) in enumerate(
+            zip(image_ids[:top_k], captions[:top_k], scores[:top_k]),
+            start=1,
+        ):
+            annotation = annotations.get(str(image_id).replace("\\", "/").lstrip("./").strip(), {})
+            evidence.append(
+                {
+                    "rank": rank,
+                    "image_id": image_id,
+                    "score": score,
+                    "caption": caption,
+                    "visual_facts": annotation.get("visual_facts", [])[:12],
+                    "positive_facts": annotation.get("positive_facts", [])[:8],
+                    "negative_facts": annotation.get("negative_facts", [])[:8],
+                    "uncertain_facts": annotation.get("uncertain_facts", [])[:5],
+                    "enriched_caption": annotation.get("enriched_caption"),
+                }
+            )
 
-        return "; ".join(queries)
+        return evidence
 
     def build_dial(self, suggestion, query):
         """
@@ -303,6 +321,57 @@ class VisDialGPTCLIPService:
                 f"Invalid JSON returned by LLM: {text!r}"
             ) from direct_error
 
+    @staticmethod
+    def _dedupe_suggestions(suggestions: Any) -> List[dict]:
+        if not isinstance(suggestions, list):
+            return []
+
+        seen = set()
+        deduped = []
+        for item in suggestions:
+            if not isinstance(item, dict):
+                continue
+
+            sug = str(item.get("sug", "")).strip()
+            if not sug or sug in seen:
+                continue
+
+            seen.add(sug)
+            deduped.append(
+                {
+                    "sug": sug,
+                    "type": str(item.get("type", "add_detail") or "add_detail").strip(),
+                    "explain": str(item.get("explain", "") or "").strip(),
+                }
+            )
+
+        return deduped
+
+    def _normalize_reasoning_output(self, data: Any) -> dict:
+        """
+        Normalize the RAIR reasoning response.
+        The expected shape is {"diagnosis": {...}, "suggestions": [...]}, but this
+        also accepts the old list-only suggestion shape as a fallback.
+        """
+        if isinstance(data, list):
+            return {
+                "diagnosis": {},
+                "suggestions": self._dedupe_suggestions(data),
+            }
+
+        if not isinstance(data, dict):
+            raise ValueError(f"Reasoning response must be a JSON object: {data!r}")
+
+        diagnosis = data.get("diagnosis") or {}
+        if not isinstance(diagnosis, dict):
+            diagnosis = {}
+
+        suggestions = self._dedupe_suggestions(data.get("suggestions", []))
+        return {
+            "diagnosis": diagnosis,
+            "suggestions": suggestions,
+        }
+
     async def rewrite_query(self, context_state: Any):
         """
         Rewrite the interaction context into a natural-language retrieval query.
@@ -311,10 +380,11 @@ class VisDialGPTCLIPService:
         prompt = self.prompt.rewrite_context.format(context=context_json)
 
         start = time.time()
-        answer = self.openai_service.generate_answer(
+        answer = self._get_openai_service().generate_answer(
             user_prompt=prompt,
             history=None,
             model=self.reasoning_model,
+            max_output_tokens=128,
             store=False,
         )
         latency_ms = int((time.time() - start) * 1000)
@@ -326,87 +396,59 @@ class VisDialGPTCLIPService:
 
         return rewritten_query, latency_ms
 
-    async def convert_triplet(self, text: str, history: Optional[RoleHistory]):
-        """
-        Use OpenAI to convert user text into triplet JSON.
-        """
-
-        prompt = self.prompt.convert_triplet.format(text=text)
-
-        start = time.time()
-        answer = self.openai_service.generate_answer(
-            user_prompt=prompt,
-            history=history,
-            model=self.triplet_model,
-            # Optional: keep the model focused and cheap
-            # temperature=0.0,
-            store=False,
-        )
-        latency_ms = int((time.time() - start) * 1000)
-
-        return answer, latency_ms
-
-    async def RAG_faiss_retrieval(self, history, gallery, text, triplets=None):
+    async def RAG_faiss_retrieval(self, history, gallery, text):
         """
         1. Retrieve by FAISS
-        2. Ask OpenAI to generate query refinement suggestions
+        2. Ask OpenAI to generate candidate-grounded query refinement suggestions
         """
         image_ids, captions, scores = self.faiss_search(text, gallery, top_k=20)
-        top_results = [
-            {
-                "rank": rank,
-                "image_id": image_id,
-                "score": score,
-                "caption": caption,
-            }
-            for rank, (image_id, score, caption) in enumerate(
-                zip(image_ids[:5], scores[:5], captions[:5]),
-                start=1,
-            )
-        ]
+        candidate_evidence = self.build_candidate_evidence(
+            image_ids=image_ids,
+            captions=captions,
+            scores=scores,
+            top_k=8,
+        )
         logger.info(
-            "RAIR retrieve top5:\n%s",
-            json.dumps(top_results, ensure_ascii=False, indent=2),
+            "RAIR candidate evidence top5:\n%s",
+            json.dumps(candidate_evidence[:5], ensure_ascii=False, indent=2),
         )
 
-        answer = await self.reasoning(history, text, captions, triplets=triplets)
+        reasoning_result = await self.reasoning(history, text, candidate_evidence)
+        logger.info(
+            "RAIR diagnosis:\n%s",
+            json.dumps(reasoning_result.get("diagnosis", {}), ensure_ascii=False, indent=2),
+        )
         logger.info(
             "RAIR suggestions:\n%s",
-            json.dumps(answer, ensure_ascii=False, indent=2),
+            json.dumps(reasoning_result.get("suggestions", []), ensure_ascii=False, indent=2),
         )
 
         return {
             "id": image_ids,
             "text": captions,
             "score": scores,
-            "suggest": answer
+            "candidate_evidence": candidate_evidence,
+            "diagnosis": reasoning_result.get("diagnosis", {}),
+            "suggest": reasoning_result.get("suggestions", []),
         }
 
-    async def reasoning(self, history, input, retrieve, triplets=None):
+    async def reasoning(self, history, input, candidate_evidence):
         """
-        Use OpenAI to generate refinement suggestions based on retrieved captions.
+        Use OpenAI to diagnose retrieved candidates and generate refinements.
         """
         prompt = self.prompt.reason.format(
             input_query=input,
-            triplets=json.dumps(triplets or [], ensure_ascii=False),
-            db=retrieve
+            db=json.dumps(candidate_evidence, ensure_ascii=False, indent=2),
         )
 
-        answer = self.openai_service.generate_answer(
+        answer = self._get_openai_service().generate_answer(
             user_prompt=prompt,
             history=history,
             model=self.reasoning_model,
+            max_output_tokens=256,
             # temperature=0.2,
             store=False,
         )
 
-        suggestion = self._safe_json_loads(answer)
-
-        # Remove duplicated "sug"
-        seen = set()
-        suggestion = [
-            d for d in suggestion
-            if not (d.get("sug") in seen or seen.add(d.get("sug")))
-        ]
-
-        return suggestion
+        data = self._safe_json_loads(answer)
+        return self._normalize_reasoning_output(data)

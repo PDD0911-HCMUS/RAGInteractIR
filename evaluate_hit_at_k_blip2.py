@@ -125,7 +125,7 @@ async def evaluate_sample(
             "turn": turn_idx,
             "user_message": user_message,
             "rewritten_query": response.get("rewritten_query"),
-            "triplets": response.get("triplets", []),
+            "diagnosis": response.get("diagnosis", {}),
             "hits": hits,
             "early_stopped": False,
             "top_ids": retrieved_ids[: max(ks)],

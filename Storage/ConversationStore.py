@@ -22,13 +22,22 @@ class ConversationStore:
         compact = []
         for item in suggestions or []:
             sug = ""
+            suggestion_type = ""
+            explain = ""
             if isinstance(item, dict):
                 sug = str(item.get("sug", "")).strip()
+                suggestion_type = str(item.get("type", "") or "").strip()
+                explain = str(item.get("explain", "") or "").strip()
             elif item is not None:
                 sug = str(item).strip()
 
             if sug:
-                compact.append({"sug": sug})
+                entry = {"sug": sug}
+                if suggestion_type:
+                    entry["type"] = suggestion_type
+                if explain:
+                    entry["explain"] = explain
+                compact.append(entry)
 
         return compact
 
