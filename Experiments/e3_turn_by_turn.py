@@ -27,7 +27,7 @@ from Experiments.e2_rair_comparison import (
     rank_change_metrics,
     score_oracle_suggestions,
 )
-from Services.QASFService import QASF
+from Services.QAFSService import QASF
 
 
 logger = logging.getLogger("rair.e3")

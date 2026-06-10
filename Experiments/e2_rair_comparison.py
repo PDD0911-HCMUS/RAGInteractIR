@@ -22,7 +22,7 @@ from Experiments.e1_baseline_retrieval import (
     resolve_torch_device,
     summarize,
 )
-from Services.QASFService import QASF
+from Services.QAFSService import QASF
 
 
 logger = logging.getLogger("rair.e2")
