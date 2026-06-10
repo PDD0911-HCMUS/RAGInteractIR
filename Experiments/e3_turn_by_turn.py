@@ -26,8 +26,8 @@ from Experiments.e2_rair_comparison import (
     combine_query,
     rank_change_metrics,
     score_oracle_suggestions,
-    select_query_aware_facts,
 )
+from Services.QASFService import QASF
 
 
 logger = logging.getLogger("rair.e3")
@@ -113,16 +113,14 @@ def build_evidence(
     )
 
     if method == "rair_full_qafs":
-        evidence = select_query_aware_facts(
-            service=service,
-            query=query,
-            evidence=evidence,
+        evidence = QASF(
+            embedding_service=service,
             top_m=fact_top_m,
             alpha=fact_alpha,
             beta=fact_beta,
             gamma=fact_gamma,
             delta=fact_delta,
-        )
+        ).select(query=query, evidence=evidence)
 
     return evidence
 

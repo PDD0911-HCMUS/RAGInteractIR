@@ -22,6 +22,7 @@ from Experiments.e1_baseline_retrieval import (
     resolve_torch_device,
     summarize,
 )
+from Services.QASFService import QASF
 
 
 logger = logging.getLogger("rair.e2")
@@ -32,19 +33,6 @@ STOPWORDS = {
     "there", "it", "he", "she", "they", "them", "his", "her", "their",
     "image", "photo", "picture", "visual", "facts", "additional",
 }
-
-CONTRADICTION_PAIRS = [
-    ("inside", "outside"),
-    ("indoor", "outdoor"),
-    ("indoors", "outdoors"),
-    ("day", "night"),
-    ("black", "white"),
-    ("standing", "sitting"),
-    ("sitting", "lying"),
-    ("laying", "standing"),
-    ("grass", "floor"),
-]
-
 
 def summarize_e2(results: List[Dict[str, Any]], methods: List[str], ks: List[int]) -> Dict[str, Any]:
     summary = summarize(results, methods, ks)
@@ -268,83 +256,6 @@ def caption_only_evidence(image_ids, captions, scores, top_k: int) -> List[Dict[
     ]
 
 
-def dedupe_keep_order(items: List[Any]) -> List[str]:
-    seen = set()
-    result = []
-    for item in items:
-        clean = " ".join(str(item or "").strip().split())
-        key = clean.lower()
-        if not clean or key in seen:
-            continue
-        seen.add(key)
-        result.append(clean)
-    return result
-
-
-def evidence_facts(candidate: Dict[str, Any]) -> List[str]:
-    return dedupe_keep_order(
-        [
-            *(candidate.get("visual_facts") or []),
-            *(candidate.get("positive_facts") or []),
-            *(candidate.get("negative_facts") or []),
-            *(candidate.get("uncertain_facts") or []),
-        ]
-    )
-
-
-def lexical_overlap_score(query_tokens: set[str], fact_tokens: set[str]) -> float:
-    if not fact_tokens:
-        return 0.0
-    return len(query_tokens & fact_tokens) / len(fact_tokens)
-
-
-def contradiction_penalty(query_tokens: set[str], fact_tokens: set[str]) -> float:
-    penalty = 0.0
-    for left, right in CONTRADICTION_PAIRS:
-        if left in query_tokens and right in fact_tokens:
-            penalty += 1.0
-        if right in query_tokens and left in fact_tokens:
-            penalty += 1.0
-
-    negation_tokens = {"no", "not", "without"}
-    if query_tokens & fact_tokens and fact_tokens & negation_tokens:
-        penalty += 0.5
-    return penalty
-
-
-def discriminativeness_score(
-    fact_tokens: set[str],
-    candidate_token_df: Dict[str, int],
-    num_candidates: int,
-) -> float:
-    if not fact_tokens or num_candidates <= 1:
-        return 0.0
-
-    scores = []
-    for token in fact_tokens:
-        df = candidate_token_df.get(token, 1)
-        scores.append(1.0 - (df - 1) / max(1, num_candidates - 1))
-    return sum(scores) / len(scores)
-
-
-def clip_text_similarity_map(
-    service: Any,
-    query: str,
-    facts: List[str],
-) -> Dict[str, float]:
-    if not facts:
-        return {}
-
-    embeddings = service.embed_texts([query, *facts])
-    query_embedding = embeddings[0]
-    fact_embeddings = embeddings[1:]
-    similarities = (fact_embeddings @ query_embedding).tolist()
-    return {
-        fact: max(0.0, min(1.0, (float(score) + 1.0) / 2.0))
-        for fact, score in zip(facts, similarities)
-    }
-
-
 def select_query_aware_facts(
     service: Any,
     query: str,
@@ -355,98 +266,14 @@ def select_query_aware_facts(
     gamma: float,
     delta: float,
 ) -> List[Dict[str, Any]]:
-    """
-    QAFS: Query-Aware Visual Fact Selection.
-    Selects a compact, relevant, and discriminative subset of facts before
-    sending candidate evidence to the RAIR reasoning LLM.
-    """
-    if top_m <= 0:
-        return evidence
-
-    all_facts = dedupe_keep_order(
-        [
-            fact
-            for candidate in evidence
-            for fact in evidence_facts(candidate)
-        ]
-    )
-    clip_scores = clip_text_similarity_map(service, query, all_facts)
-    query_tokens = tokenize(query)
-    num_candidates = len(evidence)
-
-    candidate_token_df: Dict[str, int] = {}
-    for candidate in evidence:
-        candidate_tokens = set()
-        for fact in evidence_facts(candidate):
-            candidate_tokens.update(tokenize(fact))
-        for token in candidate_tokens:
-            candidate_token_df[token] = candidate_token_df.get(token, 0) + 1
-
-    selected_evidence = []
-    for candidate in evidence:
-        facts = evidence_facts(candidate)
-        scored_facts = []
-        for fact in facts:
-            fact_tokens = tokenize(fact)
-            components = {
-                "clip": clip_scores.get(fact, 0.0),
-                "lexical": lexical_overlap_score(query_tokens, fact_tokens),
-                "discriminative": discriminativeness_score(
-                    fact_tokens=fact_tokens,
-                    candidate_token_df=candidate_token_df,
-                    num_candidates=num_candidates,
-                ),
-                "contradiction": contradiction_penalty(query_tokens, fact_tokens),
-            }
-            score = (
-                alpha * components["clip"]
-                + beta * components["lexical"]
-                + gamma * components["discriminative"]
-                - delta * components["contradiction"]
-            )
-            scored_facts.append(
-                {
-                    "fact": fact,
-                    "score": score,
-                    "components": components,
-                }
-            )
-
-        scored_facts.sort(key=lambda item: item["score"], reverse=True)
-        selected_facts = [item["fact"] for item in scored_facts[:top_m]]
-        selected_set = set(selected_facts)
-
-        item = dict(candidate)
-        item["visual_facts"] = selected_facts
-        item["positive_facts"] = [
-            fact for fact in candidate.get("positive_facts", []) if fact in selected_set
-        ]
-        item["negative_facts"] = [
-            fact for fact in candidate.get("negative_facts", []) if fact in selected_set
-        ]
-        item["uncertain_facts"] = [
-            fact for fact in candidate.get("uncertain_facts", []) if fact in selected_set
-        ]
-        item["enriched_caption"] = (
-            f"{candidate.get('caption', '')}. Selected visual facts: "
-            + "; ".join(selected_facts)
-            if selected_facts
-            else candidate.get("caption", "")
-        )
-        item["qafs"] = {
-            "original_fact_count": len(facts),
-            "selected_fact_count": len(selected_facts),
-            "selected": scored_facts[:top_m],
-            "weights": {
-                "alpha": alpha,
-                "beta": beta,
-                "gamma": gamma,
-                "delta": delta,
-            },
-        }
-        selected_evidence.append(item)
-
-    return selected_evidence
+    return QASF(
+        embedding_service=service,
+        top_m=top_m,
+        alpha=alpha,
+        beta=beta,
+        gamma=gamma,
+        delta=delta,
+    ).select(query=query, evidence=evidence)
 
 
 async def run_rewrite_only(
