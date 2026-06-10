@@ -26,6 +26,7 @@ from Entities.entities import VisDialCLIPCapDial
 from Services.PromptCollectionService import PromptCollectionService
 from Services.OpenAIService import OpenAIService
 from Services.TargetAnnotationService import TargetAnnotationService
+from Services.QAFSService import QAFS
 
 
 Role = Literal["system", "user", "assistant"]
@@ -48,6 +49,16 @@ class VisDialGPTCLIPService:
         device: str,
         openai_service: Optional[OpenAIService] = None,
         reasoning_model: Optional[str] = None,
+        use_qafs: bool = True,
+        evidence_top_k: int = 3,
+        fact_top_m: int = 4,
+        fact_alpha: float = 0.5,
+        fact_beta: float = 0.3,
+        fact_gamma: float = 0.2,
+        fact_delta: float = 0.5,
+        rewrite_max_output_tokens: Optional[int] = None,
+        reasoning_max_output_tokens: Optional[int] = None,
+        compose_max_output_tokens: Optional[int] = None,
     ) -> None:
         self.vlm = vlm
         self.device = device
@@ -64,6 +75,22 @@ class VisDialGPTCLIPService:
 
         # Optional per-task model override
         self.reasoning_model = reasoning_model
+        self.use_qafs = use_qafs
+        self.evidence_top_k = evidence_top_k
+        self.fact_top_m = fact_top_m
+        self.fact_alpha = fact_alpha
+        self.fact_beta = fact_beta
+        self.fact_gamma = fact_gamma
+        self.fact_delta = fact_delta
+        self.rewrite_max_output_tokens = rewrite_max_output_tokens or int(
+            os.environ.get("RAIR_REWRITE_MAX_TOKENS", "128")
+        )
+        self.reasoning_max_output_tokens = reasoning_max_output_tokens or int(
+            os.environ.get("RAIR_REASONING_MAX_TOKENS", "512")
+        )
+        self.compose_max_output_tokens = compose_max_output_tokens or int(
+            os.environ.get("RAIR_COMPOSE_MAX_TOKENS", "128")
+        )
 
     def _get_openai_service(self) -> OpenAIService:
         if self.openai_service is None:
@@ -277,6 +304,19 @@ class VisDialGPTCLIPService:
 
         return evidence
 
+    def select_candidate_facts(self, query: str, candidate_evidence: List[dict]) -> List[dict]:
+        if not self.use_qafs:
+            return candidate_evidence
+
+        return QAFS(
+            embedding_service=self,
+            top_m=self.fact_top_m,
+            alpha=self.fact_alpha,
+            beta=self.fact_beta,
+            gamma=self.fact_gamma,
+            delta=self.fact_delta,
+        ).select(query=query, evidence=candidate_evidence)
+
     def build_dial(self, suggestion, query):
         """
         - Ta cần xác định được đâu là respond của LLMs và query User.
@@ -322,7 +362,60 @@ class VisDialGPTCLIPService:
             ) from direct_error
 
     @staticmethod
-    def _dedupe_suggestions(suggestions: Any) -> List[dict]:
+    def _sanitize_suggestion_text(text: str) -> str:
+        cleaned = str(text or "").strip()
+        replacements = [
+            (r"^(specify|determine|clarify|provide|choose|ask)\s+(whether|if|the|a|an)?\s*", ""),
+            (r"^(whether|if)\s+", ""),
+        ]
+        for pattern, replacement in replacements:
+            cleaned = re.sub(pattern, replacement, cleaned, flags=re.IGNORECASE).strip()
+        cleaned = cleaned.rstrip("?. ")
+        return cleaned
+
+    @staticmethod
+    def _suggestion_tokens(text: str) -> set:
+        stopwords = {
+            "the", "a", "an", "and", "or", "of", "to", "in", "on", "at", "with",
+            "is", "are", "was", "were", "be", "this", "that", "there", "image",
+            "photo", "picture",
+        }
+        return {
+            token
+            for token in re.findall(r"[a-z0-9]+", str(text or "").lower())
+            if len(token) > 2 and token not in stopwords
+        }
+
+    @classmethod
+    def _is_bad_suggestion(cls, sug: str, current_query: str = "") -> bool:
+        text = str(sug or "").strip().lower()
+        if not text:
+            return True
+
+        bad_patterns = [
+            r"^(ignore|remove|exclude|avoid)\b",
+            r"\bunrelated\b",
+            r"\bdistractor\b",
+            r"^no\s+unrelated\b",
+            r"^(specify|determine|clarify|provide|choose|ask)\b",
+        ]
+        if any(re.search(pattern, text) for pattern in bad_patterns):
+            return True
+
+        suggestion_tokens = cls._suggestion_tokens(text)
+        query_tokens = cls._suggestion_tokens(current_query)
+        if suggestion_tokens and suggestion_tokens.issubset(query_tokens):
+            return True
+
+        if suggestion_tokens and query_tokens:
+            overlap = len(suggestion_tokens & query_tokens) / len(suggestion_tokens)
+            if overlap >= 0.85:
+                return True
+
+        return False
+
+    @staticmethod
+    def _dedupe_suggestions(suggestions: Any, current_query: str = "") -> List[dict]:
         if not isinstance(suggestions, list):
             return []
 
@@ -332,22 +425,42 @@ class VisDialGPTCLIPService:
             if not isinstance(item, dict):
                 continue
 
-            sug = str(item.get("sug", "")).strip()
-            if not sug or sug in seen:
+            sug = VisDialGPTCLIPService._sanitize_suggestion_text(
+                item.get("sug")
+                or item.get("suggestion")
+                or item.get("query")
+                or item.get("text")
+                or item.get("refinement")
+                or ""
+            )
+            normalized_key = " ".join(sorted(VisDialGPTCLIPService._suggestion_tokens(sug)))
+            if (
+                not sug
+                or sug in seen
+                or normalized_key in seen
+                or VisDialGPTCLIPService._is_bad_suggestion(sug, current_query)
+            ):
                 continue
 
             seen.add(sug)
+            if normalized_key:
+                seen.add(normalized_key)
             deduped.append(
                 {
                     "sug": sug,
                     "type": str(item.get("type", "add_detail") or "add_detail").strip(),
-                    "explain": str(item.get("explain", "") or "").strip(),
+                    "explain": str(
+                        item.get("explain")
+                        or item.get("explanation")
+                        or item.get("reason")
+                        or ""
+                    ).strip(),
                 }
             )
 
         return deduped
 
-    def _normalize_reasoning_output(self, data: Any) -> dict:
+    def _normalize_reasoning_output(self, data: Any, current_query: str = "") -> dict:
         """
         Normalize the RAIR reasoning response.
         The expected shape is {"diagnosis": {...}, "suggestions": [...]}, but this
@@ -356,7 +469,7 @@ class VisDialGPTCLIPService:
         if isinstance(data, list):
             return {
                 "diagnosis": {},
-                "suggestions": self._dedupe_suggestions(data),
+                "suggestions": self._dedupe_suggestions(data, current_query=current_query),
             }
 
         if not isinstance(data, dict):
@@ -366,17 +479,53 @@ class VisDialGPTCLIPService:
         if not isinstance(diagnosis, dict):
             diagnosis = {}
 
-        suggestions = self._dedupe_suggestions(data.get("suggestions", []))
+        suggestions = self._dedupe_suggestions(
+            data.get("suggestions", []),
+            current_query=current_query,
+        )
         return {
             "diagnosis": diagnosis,
             "suggestions": suggestions,
         }
 
+    @staticmethod
+    def _compact_json(data: Any) -> str:
+        return json.dumps(
+            data,
+            ensure_ascii=False,
+            separators=(",", ":"),
+        )
+
+    @staticmethod
+    def _compact_candidate_evidence_for_prompt(candidate_evidence: Any) -> Any:
+        """
+        Keep only reasoning-facing fields. This avoids sending QAFS score traces,
+        embeddings, or verbose metadata to the LLM prompt.
+        """
+        if not isinstance(candidate_evidence, list):
+            return candidate_evidence
+
+        compact = []
+        for candidate in candidate_evidence:
+            if not isinstance(candidate, dict):
+                continue
+            compact.append(
+                {
+                    "rank": candidate.get("rank"),
+                    "caption": candidate.get("caption"),
+                    "visual_facts": (candidate.get("visual_facts") or [])[:6],
+                    "positive_facts": (candidate.get("positive_facts") or [])[:4],
+                    "negative_facts": (candidate.get("negative_facts") or [])[:3],
+                    "uncertain_facts": (candidate.get("uncertain_facts") or [])[:2],
+                }
+            )
+        return compact
+
     async def rewrite_query(self, context_state: Any):
         """
         Rewrite the interaction context into a natural-language retrieval query.
         """
-        context_json = json.dumps(context_state, ensure_ascii=False, indent=2)
+        context_json = self._compact_json(context_state)
         prompt = self.prompt.rewrite_context.format(context=context_json)
 
         start = time.time()
@@ -384,7 +533,7 @@ class VisDialGPTCLIPService:
             user_prompt=prompt,
             history=None,
             model=self.reasoning_model,
-            max_output_tokens=128,
+            max_output_tokens=self.rewrite_max_output_tokens,
             store=False,
         )
         latency_ms = int((time.time() - start) * 1000)
@@ -396,20 +545,68 @@ class VisDialGPTCLIPService:
 
         return rewritten_query, latency_ms
 
+    async def compose_refined_query(
+        self,
+        current_query: str,
+        accepted_suggestion: Any,
+    ) -> Tuple[str, int]:
+        """
+        Compose a concise retrieval query from the current query and an accepted
+        RAIR suggestion. This is safer for CLIP than raw string appending.
+        """
+        if not accepted_suggestion:
+            return current_query, 0
+
+        if isinstance(accepted_suggestion, dict):
+            suggestion_text = str(accepted_suggestion.get("sug", "")).strip()
+        else:
+            suggestion_text = str(accepted_suggestion or "").strip()
+
+        if not suggestion_text:
+            return current_query, 0
+
+        prompt = self.prompt.compose_refinement.format(
+            current_query=current_query,
+            accepted_suggestion=suggestion_text,
+        )
+
+        start = time.time()
+        answer = self._get_openai_service().generate_answer(
+            user_prompt=prompt,
+            history=None,
+            model=self.reasoning_model,
+            max_output_tokens=self.compose_max_output_tokens,
+            store=False,
+        )
+        latency_ms = int((time.time() - start) * 1000)
+
+        data = self._safe_json_loads(answer)
+        refined_query = str(data.get("refined_query", "")).strip()
+        if not refined_query:
+            logger.warning("Missing refined_query in composer response: %s", answer)
+            return f"{current_query}; {suggestion_text}", latency_ms
+
+        return refined_query, latency_ms
+
     async def RAG_faiss_retrieval(self, history, gallery, text):
         """
         1. Retrieve by FAISS
         2. Ask OpenAI to generate candidate-grounded query refinement suggestions
         """
         image_ids, captions, scores = self.faiss_search(text, gallery, top_k=20)
-        candidate_evidence = self.build_candidate_evidence(
+        candidate_evidence_raw = self.build_candidate_evidence(
             image_ids=image_ids,
             captions=captions,
             scores=scores,
-            top_k=8,
+            top_k=self.evidence_top_k,
+        )
+        candidate_evidence = self.select_candidate_facts(
+            query=text,
+            candidate_evidence=candidate_evidence_raw,
         )
         logger.info(
-            "RAIR candidate evidence top5:\n%s",
+            "RAIR candidate evidence top5 use_qafs=%s:\n%s",
+            self.use_qafs,
             json.dumps(candidate_evidence[:5], ensure_ascii=False, indent=2),
         )
 
@@ -428,6 +625,16 @@ class VisDialGPTCLIPService:
             "text": captions,
             "score": scores,
             "candidate_evidence": candidate_evidence,
+            "candidate_evidence_raw": candidate_evidence_raw,
+            "fact_selection": {
+                "method": "qafs" if self.use_qafs else "none",
+                "evidence_top_k": self.evidence_top_k,
+                "top_m": self.fact_top_m,
+                "alpha": self.fact_alpha,
+                "beta": self.fact_beta,
+                "gamma": self.fact_gamma,
+                "delta": self.fact_delta,
+            },
             "diagnosis": reasoning_result.get("diagnosis", {}),
             "suggest": reasoning_result.get("suggestions", []),
         }
@@ -436,19 +643,24 @@ class VisDialGPTCLIPService:
         """
         Use OpenAI to diagnose retrieved candidates and generate refinements.
         """
+        prompt_evidence = self._compact_candidate_evidence_for_prompt(candidate_evidence)
         prompt = self.prompt.reason.format(
             input_query=input,
-            db=json.dumps(candidate_evidence, ensure_ascii=False, indent=2),
+            db=self._compact_json(prompt_evidence),
         )
 
         answer = self._get_openai_service().generate_answer(
             user_prompt=prompt,
             history=history,
             model=self.reasoning_model,
-            max_output_tokens=256,
+            max_output_tokens=self.reasoning_max_output_tokens,
             # temperature=0.2,
             store=False,
         )
 
         data = self._safe_json_loads(answer)
-        return self._normalize_reasoning_output(data)
+        normalized = self._normalize_reasoning_output(data, current_query=input)
+        if not normalized.get("suggestions"):
+            logger.warning("RAIR LLM returned no usable suggestions. Raw response: %s", answer)
+            logger.warning("RAIR prompt evidence: %s", self._compact_json(prompt_evidence))
+        return normalized

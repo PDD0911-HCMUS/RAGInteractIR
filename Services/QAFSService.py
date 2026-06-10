@@ -2,7 +2,7 @@ import re
 from typing import Any, Dict, Iterable, List, Optional
 
 
-class QASF:
+class QAFS:
     """
     Query-Aware Visual Fact Selection.
 
@@ -240,3 +240,7 @@ class QASF:
             selected_evidence.append(item)
 
         return selected_evidence
+
+
+# Backward-compatible alias for earlier experiment imports.
+QASF = QAFS

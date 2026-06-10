@@ -33,6 +33,35 @@ def resolve_torch_device(env_name: str, default: str = "cpu") -> str:
     return default
 
 
+def env_int(name: str, default: int) -> int:
+    value = os.environ.get(name)
+    if value is None:
+        return default
+    try:
+        return int(value)
+    except ValueError:
+        logger.warning("Invalid int env %s=%r; using %d", name, value, default)
+        return default
+
+
+def env_float(name: str, default: float) -> float:
+    value = os.environ.get(name)
+    if value is None:
+        return default
+    try:
+        return float(value)
+    except ValueError:
+        logger.warning("Invalid float env %s=%r; using %.3f", name, value, default)
+        return default
+
+
+def env_bool(name: str, default: bool) -> bool:
+    value = os.environ.get(name)
+    if value is None:
+        return default
+    return value.strip().lower() in {"1", "true", "yes", "on"}
+
+
 class MessageRequest(BaseModel):
     message: str
 
@@ -51,8 +80,18 @@ class VLMChatRouter:
         # Configurable runtime
         self.clip_model_name = "openai/clip-vit-base-patch32"
         self.clip_device = resolve_torch_device("CLIP_DEVICE")
-        self.greeting_model = "gpt-5.4"
-        self.reasoning_model = "gpt-5.4"
+        self.greeting_model = os.environ.get("RAIR_GREETING_MODEL", "gpt-4o")
+        self.reasoning_model = os.environ.get("RAIR_REASONING_MODEL", "gpt-4o")
+        self.use_qafs = env_bool("RAIR_USE_QAFS", True)
+        self.evidence_top_k = env_int("RAIR_EVIDENCE_TOP_K", 3)
+        self.fact_top_m = env_int("RAIR_FACT_TOP_M", 4)
+        self.fact_alpha = env_float("RAIR_FACT_ALPHA", 0.5)
+        self.fact_beta = env_float("RAIR_FACT_BETA", 0.3)
+        self.fact_gamma = env_float("RAIR_FACT_GAMMA", 0.2)
+        self.fact_delta = env_float("RAIR_FACT_DELTA", 0.5)
+        self.rewrite_max_tokens = env_int("RAIR_REWRITE_MAX_TOKENS", 128)
+        self.reasoning_max_tokens = env_int("RAIR_REASONING_MAX_TOKENS", 512)
+        self.compose_max_tokens = env_int("RAIR_COMPOSE_MAX_TOKENS", 128)
 
         self.prompt = PromptCollectionService()
         self.openai_service: Optional[OpenAIService] = None
@@ -95,6 +134,16 @@ class VLMChatRouter:
                 device=self.clip_device,
                 openai_service=self._get_openai_service(),
                 reasoning_model=self.reasoning_model,
+                use_qafs=self.use_qafs,
+                evidence_top_k=self.evidence_top_k,
+                fact_top_m=self.fact_top_m,
+                fact_alpha=self.fact_alpha,
+                fact_beta=self.fact_beta,
+                fact_gamma=self.fact_gamma,
+                fact_delta=self.fact_delta,
+                rewrite_max_output_tokens=self.rewrite_max_tokens,
+                reasoning_max_output_tokens=self.reasoning_max_tokens,
+                compose_max_output_tokens=self.compose_max_tokens,
             )
         return self.visdial_serve
 
@@ -269,6 +318,7 @@ class VLMChatRouter:
             ),
             "rewritten_query": rewritten_query,
             "candidate_evidence": retrieve.get("candidate_evidence", [])[:8],
+            "fact_selection": retrieve.get("fact_selection", {}),
             "diagnosis": retrieve.get("diagnosis", {}),
             "top5": [
                 {
@@ -314,5 +364,9 @@ class VLMChatRouter:
                 "rewrite_latency_ms": rewrite_latency_ms,
                 "rewrite_model": self.reasoning_model,
                 "reasoning_model": self.reasoning_model,
+                "fact_selection": retrieve.get("fact_selection", {}),
+                "rewrite_max_tokens": self.rewrite_max_tokens,
+                "reasoning_max_tokens": self.reasoning_max_tokens,
+                "compose_max_tokens": self.compose_max_tokens,
             },
         }

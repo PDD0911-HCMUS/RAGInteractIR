@@ -67,12 +67,20 @@ def summarize_e2(results: List[Dict[str, Any]], methods: List[str], ks: List[int
             for item in interaction_items
             if item.get("selected_suggestion")
         ]
+        novel_overlaps = [
+            item.get("selected_suggestion").get("oracle_novel_overlap")
+            for item in interaction_items
+            if item.get("selected_suggestion")
+        ]
 
         summary["methods"][method]["interaction"] = {
             "accept_rate": accepted / count,
             "no_op_rate": 1.0 - (accepted / count),
             "mean_selected_overlap": (
                 sum(overlaps) / len(overlaps) if overlaps else None
+            ),
+            "mean_selected_novel_overlap": (
+                sum(novel_overlaps) / len(novel_overlaps) if novel_overlaps else None
             ),
             **{f"{key}_rate": value / count for key, value in changes.items()},
             **changes,
@@ -103,6 +111,7 @@ def oracle_tokens(sample: Dict[str, Any]) -> set[str]:
 def choose_oracle_suggestion(
     suggestions: List[Dict[str, Any]],
     sample: Dict[str, Any],
+    current_query: str = "",
     min_overlap: int = 1,
 ) -> Optional[Dict[str, Any]]:
     """
@@ -111,11 +120,13 @@ def choose_oracle_suggestion(
     configured overlap threshold; otherwise it rejects all suggestions.
     """
     target_tokens = oracle_tokens(sample)
+    query_tokens = tokenize(current_query)
     if not suggestions or not target_tokens:
         return None
 
     best = None
     best_score = -1
+    best_novel_score = -1
     for suggestion in suggestions:
         text = " ".join(
             [
@@ -124,17 +135,20 @@ def choose_oracle_suggestion(
                 str(suggestion.get("type", "")),
             ]
         )
-        score = len(tokenize(text) & target_tokens)
-        if score > best_score:
+        suggestion_tokens = tokenize(text)
+        overlap_tokens = suggestion_tokens & target_tokens
+        novel_overlap_tokens = overlap_tokens - query_tokens
+        score = len(overlap_tokens)
+        novel_score = len(novel_overlap_tokens)
+        if (novel_score, score) > (best_novel_score, best_score):
             best = suggestion
             best_score = score
+            best_novel_score = novel_score
 
     if best is None:
         return None
 
-    selected = dict(best)
-    selected["oracle_overlap"] = best_score
-    selected["oracle_target_tokens"] = sorted(tokenize(
+    best_tokens = tokenize(
         " ".join(
             [
                 str(best.get("sug", "")),
@@ -142,18 +156,25 @@ def choose_oracle_suggestion(
                 str(best.get("type", "")),
             ]
         )
-    ) & target_tokens)
+    )
+    overlap_tokens = best_tokens & target_tokens
+    novel_overlap_tokens = overlap_tokens - query_tokens
+    selected = dict(best)
+    selected["oracle_overlap"] = best_score
+    selected["oracle_novel_overlap"] = best_novel_score
+    selected["oracle_target_tokens"] = sorted(overlap_tokens)
+    selected["oracle_novel_target_tokens"] = sorted(novel_overlap_tokens)
 
-    if best_score < min_overlap:
+    if best_novel_score < min_overlap:
         selected["oracle_action"] = "reject"
         selected["oracle_reason"] = (
-            f"best suggestion overlap {best_score} is below threshold {min_overlap}"
+            f"best novel overlap {best_novel_score} is below threshold {min_overlap}"
         )
         return None
 
     selected["oracle_action"] = "accept"
     selected["oracle_reason"] = (
-        f"best suggestion overlap {best_score} meets threshold {min_overlap}"
+        f"best novel overlap {best_novel_score} meets threshold {min_overlap}"
     )
     return selected
 
@@ -161,8 +182,10 @@ def choose_oracle_suggestion(
 def score_oracle_suggestions(
     suggestions: List[Dict[str, Any]],
     sample: Dict[str, Any],
+    current_query: str = "",
 ) -> List[Dict[str, Any]]:
     target_tokens = oracle_tokens(sample)
+    query_tokens = tokenize(current_query)
     scored = []
     for suggestion in suggestions:
         text = " ".join(
@@ -173,9 +196,12 @@ def score_oracle_suggestions(
             ]
         )
         overlap_tokens = sorted(tokenize(text) & target_tokens)
+        novel_overlap_tokens = sorted((tokenize(text) & target_tokens) - query_tokens)
         item = dict(suggestion)
         item["oracle_overlap"] = len(overlap_tokens)
+        item["oracle_novel_overlap"] = len(novel_overlap_tokens)
         item["oracle_target_tokens"] = overlap_tokens
+        item["oracle_novel_target_tokens"] = novel_overlap_tokens
         scored.append(item)
     return scored
 
@@ -232,8 +258,124 @@ def best_scored_suggestion(scored_suggestions: List[Dict[str, Any]]) -> Optional
         return None
     return max(
         scored_suggestions,
-        key=lambda item: int(item.get("oracle_overlap", 0) or 0),
+        key=lambda item: (
+            int(item.get("oracle_novel_overlap", 0) or 0),
+            int(item.get("oracle_overlap", 0) or 0),
+        ),
     )
+
+
+def rank_value(rank: Optional[int]) -> float:
+    return float("inf") if rank is None else float(rank)
+
+
+def is_rank_safe(initial_rank: Optional[int], refined_rank: Optional[int]) -> bool:
+    if initial_rank is None:
+        return refined_rank is not None
+    if refined_rank is None:
+        return False
+    return refined_rank <= initial_rank
+
+
+async def select_rank_safe_suggestion(
+    service: Any,
+    gallery: Dict[str, Any],
+    scored_suggestions: List[Dict[str, Any]],
+    sample: Dict[str, Any],
+    current_query: str,
+    initial_rank: Optional[int],
+    threshold: int,
+    search_depth: int,
+) -> Dict[str, Any]:
+    """
+    Upper-bound simulated interaction: among target-supported suggestions, try
+    the composed query and accept only refinements that do not worsen target rank.
+    This is not a deployment policy; it estimates RAIR's potential with an ideal
+    target-aware user.
+    """
+    candidates = [
+        suggestion
+        for suggestion in scored_suggestions
+        if int(suggestion.get("oracle_novel_overlap", 0) or 0) >= threshold
+    ]
+    candidates.sort(
+        key=lambda item: (
+            int(item.get("oracle_novel_overlap", 0) or 0),
+            int(item.get("oracle_overlap", 0) or 0),
+        ),
+        reverse=True,
+    )
+
+    evaluations = []
+    best = None
+    best_key = None
+    total_compose_latency_ms = 0
+
+    for suggestion in candidates[:3]:
+        refined_query, compose_latency_ms = await service.compose_refined_query(
+            current_query=current_query,
+            accepted_suggestion=suggestion,
+        )
+        total_compose_latency_ms += compose_latency_ms
+        refined_ids, refined_captions, refined_scores = service.faiss_search(
+            query_text=refined_query,
+            gallery=gallery,
+            top_k=search_depth,
+        )
+        refined_rank = compute_rank(refined_ids, sample)
+        safe = is_rank_safe(initial_rank, refined_rank)
+        evaluation = {
+            "suggestion": suggestion,
+            "refined_query": refined_query,
+            "compose_latency_ms": compose_latency_ms,
+            "refined_rank": refined_rank,
+            "rank_safe": safe,
+            "top_ids": refined_ids[:20],
+            "top_scores": refined_scores[:20],
+            "top_captions": refined_captions[:20],
+        }
+        evaluations.append(evaluation)
+
+        if not safe:
+            continue
+
+        key = (
+            rank_value(refined_rank),
+            -int(suggestion.get("oracle_novel_overlap", 0) or 0),
+            -int(suggestion.get("oracle_overlap", 0) or 0),
+        )
+        if best is None or key < best_key:
+            best = evaluation
+            best_key = key
+
+    if best is None:
+        rejected_best = best_scored_suggestion(scored_suggestions)
+        if rejected_best:
+            rejected_best = dict(rejected_best)
+            rejected_best["oracle_action"] = "reject"
+            rejected_best["oracle_reason"] = (
+                "no threshold-passing suggestion improved or preserved target rank"
+            )
+        return {
+            "selected": None,
+            "refined_query": current_query,
+            "refined_rank": initial_rank,
+            "compose_latency_ms": total_compose_latency_ms,
+            "candidate_evaluations": evaluations,
+            "rejected_best": rejected_best,
+        }
+
+    selected = dict(best["suggestion"])
+    selected["oracle_action"] = "accept"
+    selected["oracle_reason"] = "rank-safe oracle accepted this composed refinement"
+    return {
+        "selected": selected,
+        "refined_query": best["refined_query"],
+        "refined_rank": best["refined_rank"],
+        "compose_latency_ms": total_compose_latency_ms,
+        "candidate_evaluations": evaluations,
+        "rejected_best": None,
+    }
 
 
 def caption_only_evidence(image_ids, captions, scores, top_k: int) -> List[Dict[str, Any]]:
@@ -315,6 +457,7 @@ async def run_rair_variant(
     fact_gamma: float,
     fact_delta: float,
     oracle_overlap_threshold: int,
+    selection_policy: str,
 ) -> Dict[str, Any]:
     image_ids, captions, scores = service.faiss_search(
         query_text=rewritten_query,
@@ -356,21 +499,53 @@ async def run_rair_variant(
         candidate_evidence=evidence,
     )
     suggestions = reasoning.get("suggestions", [])
-    scored_suggestions = score_oracle_suggestions(suggestions, sample)
-    selected = choose_oracle_suggestion(
-        scored_suggestions,
+    scored_suggestions = score_oracle_suggestions(
+        suggestions,
         sample,
-        min_overlap=oracle_overlap_threshold,
+        current_query=rewritten_query,
     )
-    rejected_best = None if selected else best_scored_suggestion(scored_suggestions)
-    if rejected_best:
-        rejected_best = dict(rejected_best)
-        rejected_best["oracle_action"] = "reject"
-        rejected_best["oracle_reason"] = (
-            f"best suggestion overlap {rejected_best.get('oracle_overlap', 0)} "
-            f"is below threshold {oracle_overlap_threshold}"
+    candidate_evaluations = []
+
+    if selection_policy == "rank_safe_oracle":
+        selection_result = await select_rank_safe_suggestion(
+            service=service,
+            gallery=gallery,
+            scored_suggestions=scored_suggestions,
+            sample=sample,
+            current_query=rewritten_query,
+            initial_rank=initial_rank,
+            threshold=oracle_overlap_threshold,
+            search_depth=search_depth,
         )
-    refined_query = combine_query(rewritten_query, selected)
+        selected = selection_result["selected"]
+        rejected_best = selection_result["rejected_best"]
+        refined_query = selection_result["refined_query"]
+        compose_latency_ms = selection_result["compose_latency_ms"]
+        candidate_evaluations = selection_result["candidate_evaluations"]
+    else:
+        selected = choose_oracle_suggestion(
+            scored_suggestions,
+            sample,
+            current_query=rewritten_query,
+            min_overlap=oracle_overlap_threshold,
+        )
+        rejected_best = None if selected else best_scored_suggestion(scored_suggestions)
+        if rejected_best:
+            rejected_best = dict(rejected_best)
+            rejected_best["oracle_action"] = "reject"
+            rejected_best["oracle_reason"] = (
+                f"best novel overlap {rejected_best.get('oracle_novel_overlap', 0)} "
+                f"is below threshold {oracle_overlap_threshold}"
+            )
+        if selected:
+            refined_query, compose_latency_ms = await service.compose_refined_query(
+                current_query=rewritten_query,
+                accepted_suggestion=selected,
+            )
+        else:
+            refined_query = rewritten_query
+            compose_latency_ms = 0
+
     interaction_action = "accept" if selected else "no_op"
 
     refined_ids, refined_captions, refined_scores = service.faiss_search(
@@ -384,9 +559,13 @@ async def run_rair_variant(
         "initial_query": rewritten_query,
         "refined_query": refined_query,
         "interaction_action": interaction_action,
+        "compose_latency_ms": compose_latency_ms,
+        "query_refinement_policy": "llm_compose" if selected else "no_op",
+        "selection_policy": selection_policy,
         "oracle_overlap_threshold": oracle_overlap_threshold,
         "selected_suggestion": selected,
         "rejected_best_suggestion": rejected_best,
+        "candidate_selection_evaluations": candidate_evaluations,
         "suggestions": scored_suggestions,
         "diagnosis": reasoning.get("diagnosis", {}),
         "candidate_evidence": evidence,
@@ -424,6 +603,7 @@ async def evaluate_sample(
     fact_gamma: float,
     fact_delta: float,
     oracle_overlap_threshold: int,
+    selection_policy: str,
 ) -> Dict[str, Any]:
     rewritten_query, _ = await service.rewrite_query(build_rewrite_context(sample))
 
@@ -455,6 +635,7 @@ async def evaluate_sample(
             fact_gamma=fact_gamma,
             fact_delta=fact_delta,
             oracle_overlap_threshold=oracle_overlap_threshold,
+            selection_policy=selection_policy,
         )
 
     if "rair_full" in methods:
@@ -474,6 +655,7 @@ async def evaluate_sample(
             fact_gamma=fact_gamma,
             fact_delta=fact_delta,
             oracle_overlap_threshold=oracle_overlap_threshold,
+            selection_policy=selection_policy,
         )
 
     if "rair_full_qafs" in methods:
@@ -493,6 +675,7 @@ async def evaluate_sample(
             fact_gamma=fact_gamma,
             fact_delta=fact_delta,
             oracle_overlap_threshold=oracle_overlap_threshold,
+            selection_policy=selection_policy,
         )
 
     return {
@@ -574,6 +757,7 @@ async def main_async(args: argparse.Namespace) -> None:
                 fact_gamma=args.fact_gamma,
                 fact_delta=args.fact_delta,
                 oracle_overlap_threshold=args.oracle_overlap_threshold,
+                selection_policy=args.selection_policy,
             )
         except Exception:
             if not args.continue_on_error:
@@ -612,13 +796,17 @@ async def main_async(args: argparse.Namespace) -> None:
                 "delta": args.fact_delta,
             },
             "oracle_overlap_threshold": args.oracle_overlap_threshold,
+            "selection_policy": args.selection_policy,
             "clip_model": args.clip_model,
             "device": args.device,
             "llm_provider": args.llm_provider,
             "reasoning_model": args.reasoning_model,
             "local_llm_model": args.local_llm_model,
             "gallery_overlap": overlap,
-            "interaction_policy": "target_fact_overlap_accept_or_no_op",
+            "interaction_policy": (
+                "rank_safe_oracle" if args.selection_policy == "rank_safe_oracle"
+                else "novel_target_fact_overlap_accept_or_no_op"
+            ),
         },
         "summary": summarize_e2(results, methods, ks),
         "results": results,
@@ -652,6 +840,15 @@ def parse_args() -> argparse.Namespace:
         type=int,
         default=1,
         help="Minimum target-fact token overlap required to accept a generated suggestion.",
+    )
+    parser.add_argument(
+        "--selection-policy",
+        choices=["novel_overlap", "rank_safe_oracle"],
+        default="novel_overlap",
+        help=(
+            "Suggestion acceptance policy. novel_overlap is realistic simulated feedback; "
+            "rank_safe_oracle is an upper-bound oracle that rejects rank-worsening refinements."
+        ),
     )
     parser.add_argument(
         "--methods",

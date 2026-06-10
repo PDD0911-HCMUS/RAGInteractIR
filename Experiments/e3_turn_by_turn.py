@@ -23,7 +23,6 @@ from Experiments.e1_baseline_retrieval import (
 from Experiments.e2_rair_comparison import (
     caption_only_evidence,
     choose_oracle_suggestion,
-    combine_query,
     rank_change_metrics,
     score_oracle_suggestions,
 )
@@ -199,14 +198,23 @@ async def run_method_turns(
         suggestions = score_oracle_suggestions(
             reasoning.get("suggestions", []),
             sample,
+            current_query=current_query,
         )
         selected = choose_oracle_suggestion(
             suggestions,
             sample,
+            current_query=current_query,
             min_overlap=oracle_overlap_threshold,
         )
-        next_query = combine_query(current_query, selected)
         interaction_action = "accept" if selected else "no_op"
+        if selected:
+            next_query, compose_latency_ms = await service.compose_refined_query(
+                current_query=current_query,
+                accepted_suggestion=selected,
+            )
+        else:
+            next_query = current_query
+            compose_latency_ms = 0
 
         next_ids, next_captions, next_scores = service.faiss_search(
             query_text=next_query,
@@ -219,6 +227,8 @@ async def run_method_turns(
             "previous_query": current_query,
             "query": next_query,
             "interaction_action": interaction_action,
+            "compose_latency_ms": compose_latency_ms,
+            "query_refinement_policy": "llm_compose" if selected else "no_op",
             "selected_suggestion": selected,
             "suggestions": suggestions,
             "diagnosis": reasoning.get("diagnosis", {}),
@@ -472,7 +482,7 @@ async def main_async(args: argparse.Namespace) -> None:
             "reasoning_model": args.reasoning_model,
             "local_llm_model": args.local_llm_model,
             "gallery_overlap": overlap,
-            "interaction_policy": "target_fact_overlap_accept_or_no_op",
+            "interaction_policy": "novel_target_fact_overlap_accept_or_no_op",
         },
         "summary": summarize_e3(results, methods, ks, args.turns),
         "results": results,
