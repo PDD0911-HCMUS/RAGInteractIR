@@ -1,0 +1,182 @@
+@inproceedings{radford2021clip,
+  title={Learning Transferable Visual Models From Natural Language Supervision},
+  author={Radford, Alec and Kim, Jong Wook and Hallacy, Chris and Ramesh, Aditya and Goh, Gabriel and Agarwal, Sandhini and Sastry, Girish and Askell, Amanda and Mishkin, Pamela and Clark, Jack and Krueger, Gretchen and Sutskever, Ilya},
+  booktitle={Proceedings of the 38th International Conference on Machine Learning},
+  year={2021}
+}
+
+@inproceedings{das2017visualdialog,
+  title={Visual Dialog},
+  author={Das, Abhishek and Kottur, Satwik and Gupta, Khushi and Singh, Avi and Yadav, Deshraj and Moura, Jose M. F. and Parikh, Devi and Batra, Dhruv},
+  booktitle={Proceedings of the IEEE Conference on Computer Vision and Pattern Recognition},
+  year={2017}
+}
+
+@inproceedings{guo2018dialog,
+  title={Dialog-based Interactive Image Retrieval},
+  author={Guo, Xiaoxiao and Wu, Hui and Cheng, Yu and Rennie, Steven and Tesauro, Gerald and Feris, Rogerio Schmidt},
+  booktitle={Advances in Neural Information Processing Systems},
+  year={2018}
+}
+
+@misc{wu2019fashioniq,
+  title={Fashion IQ: A New Dataset Towards Retrieving Images by Natural Language Feedback},
+  author={Wu, Hui and Gao, Yupeng and Guo, Xiaoxiao and Al-Halah, Ziad and Rennie, Steven and Grauman, Kristen and Feris, Rogerio},
+  year={2019},
+  eprint={1905.12794},
+  archivePrefix={arXiv},
+  primaryClass={cs.CV}
+}
+
+@inproceedings{vo2019tirg,
+  title={Composing Text and Image for Image Retrieval: An Empirical Odyssey},
+  author={Vo, Nam and Jiang, Lu and Sun, Chen and Murphy, Kevin and Li, Li-Jia and Fei-Fei, Li and Hays, James},
+  booktitle={Proceedings of the IEEE/CVF Conference on Computer Vision and Pattern Recognition},
+  year={2019}
+}
+
+@inproceedings{li2023blip2,
+  title={BLIP-2: Bootstrapping Language-Image Pre-training with Frozen Image Encoders and Large Language Models},
+  author={Li, Junnan and Li, Dongxu and Savarese, Silvio and Hoi, Steven},
+  booktitle={Proceedings of the 40th International Conference on Machine Learning},
+  year={2023}
+}
+
+@inproceedings{liu2023llava,
+  title={Visual Instruction Tuning},
+  author={Liu, Haotian and Li, Chunyuan and Wu, Qingyang and Lee, Yong Jae},
+  booktitle={Advances in Neural Information Processing Systems},
+  year={2023}
+}
+
+@inproceedings{zhu2023minigpt4,
+  title={MiniGPT-4: Enhancing Vision-Language Understanding with Advanced Large Language Models},
+  author={Zhu, Deyao and Chen, Jun and Shen, Xiaoqian and Li, Xiang and Elhoseiny, Mohamed},
+  booktitle={International Conference on Learning Representations},
+  year={2024}
+}
+
+@inproceedings{dai2023instructblip,
+  title={InstructBLIP: Towards General-purpose Vision-Language Models with Instruction Tuning},
+  author={Dai, Wenliang and Li, Junnan and Li, Dongxu and Tiong, Anthony Meng Huat and Zhao, Junqi and Wang, Weisheng and Li, Boyang and Fung, Pascale and Hoi, Steven},
+  booktitle={Advances in Neural Information Processing Systems},
+  year={2023}
+}
+
+@misc{levy2023chatir,
+  title={Chatting Makes Perfect: Chat-based Image Retrieval},
+  author={Levy, Matan and Ben-Ari, Rami and Darshan, Nir and Lischinski, Dani},
+  year={2023},
+  eprint={2305.20062},
+  archivePrefix={arXiv},
+  primaryClass={cs.CV}
+}
+
+@inproceedings{saito2023pic2word,
+  title={Pic2Word: Mapping Pictures to Words for Zero-shot Composed Image Retrieval},
+  author={Saito, Kuniaki and Sohn, Kihyuk and Zhang, Xiang and Li, Chun-Liang and Lee, Chen-Yu and Saenko, Kate and Pfister, Tomas},
+  booktitle={Proceedings of the IEEE/CVF Conference on Computer Vision and Pattern Recognition},
+  year={2023}
+}
+
+@inproceedings{baldrati2023searle,
+  title={Zero-Shot Composed Image Retrieval with Textual Inversion},
+  author={Baldrati, Alberto and Agnolucci, Lorenzo and Bertini, Marco and Del Bimbo, Alberto},
+  booktitle={Proceedings of the IEEE/CVF International Conference on Computer Vision},
+  year={2023}
+}
+
+@misc{baldrati2023clip4cir,
+  title={Composed Image Retrieval using Contrastive Learning and Task-oriented CLIP-based Features},
+  author={Baldrati, Alberto and Bertini, Marco and Uricchio, Tiberio and Del Bimbo, Alberto},
+  year={2023},
+  eprint={2308.11485},
+  archivePrefix={arXiv},
+  primaryClass={cs.CV}
+}
+
+@inproceedings{karthik2023cirevl,
+  title={Vision-by-Language for Training-Free Compositional Image Retrieval},
+  author={Karthik, Shyamgopal and Roth, Karsten and Mancini, Massimiliano and Akata, Zeynep},
+  booktitle={International Conference on Learning Representations},
+  year={2024}
+}
+
+@misc{zhu2024enhancing,
+  title={Enhancing Interactive Image Retrieval With Query Rewriting Using Large Language Models and Vision Language Models},
+  author={Zhu, Hongyi and Huang, Jia-Hong and Rudinac, Stevan and Kanoulas, Evangelos},
+  year={2024},
+  eprint={2404.18746},
+  archivePrefix={arXiv},
+  primaryClass={cs.CV}
+}
+
+@inproceedings{jia2021scaling,
+  title={Scaling Up Visual and Vision-Language Representation Learning with Noisy Text Supervision},
+  author={Jia, Chao and Yang, Yinfei and Xia, Ye and Chen, Yi-Ting and Parekh, Zarana and Pham, Hieu and Le, Quoc V. and Sung, Yun-Hsuan and Li, Zhen and Duerig, Tom},
+  booktitle={Proceedings of the 38th International Conference on Machine Learning},
+  pages={4904--4916},
+  year={2021}
+}
+
+@inproceedings{zhai2023sigmoid,
+  title={Sigmoid Loss for Language Image Pre-Training},
+  author={Zhai, Xiaohua and Mustafa, Basil and Kolesnikov, Alexander and Beyer, Lucas},
+  booktitle={Proceedings of the IEEE/CVF International Conference on Computer Vision},
+  pages={11975--11986},
+  year={2023}
+}
+
+@inproceedings{levy2023chatting,
+  title={Chatting Makes Perfect: Chat-based Image Retrieval},
+  author={Levy, Matan and Ben-Ari, Rami and Darshan, Nir and Lischinski, Dani},
+  booktitle={Advances in Neural Information Processing Systems},
+  pages={61437--61449},
+  year={2023}
+}
+
+@inproceedings{lee2024interactive,
+  title={Interactive Text-to-Image Retrieval with Large Language Models: A Plug-and-Play Approach},
+  author={Lee, Saehyung and Yu, Sangwon and Park, Junsung and Yi, Jihun and Yoon, Sungroh},
+  booktitle={Proceedings of the 62nd Annual Meeting of the Association for Computational Linguistics (Volume 1: Long Papers)},
+  pages={791--809},
+  year={2024},
+  address={Bangkok, Thailand},
+  publisher={Association for Computational Linguistics}
+}
+
+@inproceedings{liu2021image,
+  title={Image Retrieval on Real-Life Images with Pre-Trained Vision-and-Language Models},
+  author={Liu, Zheyuan and Rodriguez-Opazo, Cristian and Teney, Damien and Gould, Stephen},
+  booktitle={Proceedings of the IEEE/CVF International Conference on Computer Vision},
+  pages={2125--2134},
+  year={2021}
+}
+
+@inproceedings{baldrati2023zero,
+  title={Zero-Shot Composed Image Retrieval with Textual Inversion},
+  author={Baldrati, Alberto and Agnolucci, Lorenzo and Bertini, Marco and Del Bimbo, Alberto},
+  booktitle={Proceedings of the IEEE/CVF International Conference on Computer Vision},
+  pages={15338--15347},
+  year={2023}
+}
+
+@inproceedings{wang2023query2doc,
+  title={Query2doc: Query Expansion with Large Language Models},
+  author={Wang, Liang and Yang, Nan and Wei, Furu},
+  booktitle={Proceedings of the 2023 Conference on Empirical Methods in Natural Language Processing},
+  pages={9414--9423},
+  year={2023},
+  address={Singapore},
+  publisher={Association for Computational Linguistics}
+}
+
+@inproceedings{ma2023rewrite,
+  title={Query Rewriting in Retrieval-Augmented Large Language Models},
+  author={Ma, Xinbei and Gong, Yeyun and He, Pengcheng and Zhao, Hai and Duan, Nan},
+  booktitle={Proceedings of the 2023 Conference on Empirical Methods in Natural Language Processing},
+  pages={5303--5315},
+  year={2023},
+  address={Singapore},
+  publisher={Association for Computational Linguistics}
+}

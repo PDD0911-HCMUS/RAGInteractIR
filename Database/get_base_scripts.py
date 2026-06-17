@@ -207,7 +207,7 @@ if __name__ == "__main__":
     
     
     script_text, image_id = visdial.get_script(
-        index=50,
+        index=5143,
         include_answer_options=False,
         return_as_string=True
     )

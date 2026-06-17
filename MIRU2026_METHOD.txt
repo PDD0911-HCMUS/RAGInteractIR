@@ -1,0 +1,209 @@
+\section{Method}
+\label{sec:method}
+
+We propose \textbf{RAIR}, a reasoning-augmented interactive retrieval framework for dialogue-based image retrieval. RAIR combines embedding-based candidate retrieval, query-aware visual fact selection, and candidate-grounded large language model (LLM) reasoning. Unlike conventional retrieval methods that directly return visually or semantically similar images, RAIR further analyzes the retrieved candidates and generates refinement suggestions for the next interaction round. The key idea is to provide the LLM with compact and query-relevant visual evidence, rather than noisy or unfiltered candidate information.
+
+\subsection{Problem Formulation}
+\label{subsec:problem_formulation}
+
+Let $\mathcal{D} = \{c_i\}_{i=1}^{N}$ denote a database of image-caption candidates. Each candidate is defined as
+\begin{equation}
+    c_i = (I_i, d_i, \mathcal{F}_i),
+\end{equation}
+where $I_i$ is an image, $d_i$ is its corresponding caption or textual description, and $\mathcal{F}_i$ is the set of visual facts associated with the candidate. We define the visual fact set as
+\begin{equation}
+    \mathcal{F}_i = \{f_{i,1}, f_{i,2}, \ldots, f_{i,n_i}\},
+\end{equation}
+where $f_{i,k}$ denotes the $k$-th visual fact of candidate $c_i$. A visual fact describes a fine-grained visual element, such as an object, attribute, action, spatial relation, or scene property.
+
+At interaction round $t$, the dialogue context is represented as
+\begin{equation}
+    \mathcal{H}_t = \{Q_0, S_0, Q_1, S_1, \ldots, Q_t\},
+\end{equation}
+where $Q_t$ is the current user query and $S_j$ denotes the system response at round $j$. In RAIR, this dialogue context is rewritten into a self-contained query $q_t$, which represents the current user intent. The goal of RAIR is to retrieve a ranked candidate set that matches $q_t$ and to generate grounded refinement suggestions when the retrieved candidates are incomplete, ambiguous, or partially mismatched.
+
+\subsection{Offline Indexing}
+\label{subsec:offline_indexing}
+
+RAIR constructs an offline index for efficient candidate retrieval. For each candidate $c_i$, we compute an image embedding:
+\begin{equation}
+    \mathbf{v}_i = E_{\mathrm{img}}(I_i),
+\end{equation}
+where $E_{\mathrm{img}}(\cdot)$ denotes the image encoder. The image embedding $\mathbf{v}_i$ is used for initial candidate retrieval.
+
+In addition to the image embedding, each candidate $c_i$ stores its caption $d_i$ and visual fact set $\mathcal{F}_i$. The image embeddings support efficient visual retrieval, while the captions and visual facts provide candidate-level information for later query-aware selection and LLM-based diagnosis. Compared with a single caption, visual facts offer more fine-grained evidence about objects, actions, attributes, relations, and scene-level properties.
+
+\subsection{Dialogue-Aware Query Representation}
+\label{subsec:dialogue_query}
+
+Given the dialogue context $\mathcal{H}_t$, RAIR constructs the current retrieval query by rewriting the dialogue history into a self-contained query:
+\begin{equation}
+    q_t = \mathrm{Rewrite}(\mathcal{H}_t),
+\end{equation}
+where $\mathrm{Rewrite}(\cdot)$ can be implemented using an LLM or a lightweight query rewriting module. Here, $q_t$ is a textual query that summarizes the current user intent based on both the latest query and the previous interaction history.
+
+The rewritten query $q_t$ is then encoded into a query embedding:
+\begin{equation}
+    \mathbf{q}_t = E_{\mathrm{text}}(q_t),
+\end{equation}
+where $E_{\mathrm{text}}(\cdot)$ denotes the text encoder. Therefore, $\mathcal{H}_t$ denotes the dialogue context, $q_t$ denotes the rewritten textual query, and $\mathbf{q}_t$ denotes the embedding representation of $q_t$.
+
+RAIR retrieves an initial candidate set by comparing the query embedding with the indexed image embeddings:
+\begin{equation}
+    \mathcal{C}_t =
+    \operatorname{TopK}_{c_i \in \mathcal{D}}
+    \operatorname{sim}(\mathbf{q}_t, \mathbf{v}_i),
+\end{equation}
+where $\operatorname{sim}(\cdot,\cdot)$ denotes cosine similarity. The retrieved candidate set is denoted as
+\begin{equation}
+    \mathcal{C}_t = \{c_{r_1}, c_{r_2}, \ldots, c_{r_K}\},
+\end{equation}
+where $r_1, r_2, \ldots, r_K$ are the indices of the top-$K$ retrieved candidates. Each retrieved candidate $c_{r_j}$ contains its image, caption, and associated visual facts.
+
+\subsection{Query-Aware Visual Fact Selection}
+\label{subsec:qafs}
+
+A retrieved candidate may contain many visual facts, but only a subset of them is useful for judging whether the candidate satisfies the current query. Passing all facts to the LLM can introduce irrelevant information, increase prompt length, and reduce the reliability of candidate diagnosis. Therefore, we introduce \textbf{Query-Aware Visual Fact Selection} (QAFS), which selects a compact set of query-relevant and discriminative facts for each retrieved candidate.
+
+Given the rewritten query $q_t$, a retrieved candidate $c_i \in \mathcal{C}_t$, and its visual fact set $\mathcal{F}_i$, QAFS selects the top-$m$ facts with the highest query-aware scores:
+\begin{equation}
+    \mathcal{S}_i =
+    \operatorname{TopM}_{f_{i,k} \in \mathcal{F}_i}
+    \operatorname{score}(f_{i,k} \mid q_t, c_i, \mathcal{C}_t),
+\end{equation}
+where $\mathcal{S}_i$ denotes the selected evidence set for candidate $c_i$. The score depends on the query $q_t$, the current candidate $c_i$, and the retrieved candidate set $\mathcal{C}_t$, since one of the scoring terms measures how discriminative a fact is among the retrieved candidates.
+
+The QAFS scoring function is defined as
+\begin{equation}
+\begin{aligned}
+\operatorname{score}(f_{i,k} \mid q_t, c_i, \mathcal{C}_t)
+=
+&\ \alpha \cdot \operatorname{sim}_{\mathrm{text}}(q_t, f_{i,k}) \\
+&+ \beta \cdot \operatorname{overlap}(q_t, f_{i,k}) \\
+&+ \gamma \cdot \operatorname{disc}(f_{i,k}, \mathcal{C}_t) \\
+&- \delta \cdot \operatorname{contra}(f_{i,k}, q_t),
+\end{aligned}
+\label{eq:qafs_score}
+\end{equation}
+where $\alpha$, $\beta$, $\gamma$, and $\delta$ are weighting coefficients.
+
+\subsubsection{Semantic Similarity}
+\label{subsubsec:semantic_similarity}
+
+The semantic similarity term measures the meaning-level relevance between the rewritten query and a visual fact. We compute it using normalized text-embedding similarity:
+\begin{equation}
+\operatorname{sim}_{\mathrm{text}}(q_t, f_{i,k})
+=
+\frac{
+\cos\left(E_{\mathrm{text}}(q_t), E_{\mathrm{text}}(f_{i,k})\right) + 1
+}{2}.
+\end{equation}
+
+This term allows QAFS to select facts that are semantically related to the query even when they do not share identical surface words.
+
+\subsubsection{Lexical Overlap}
+\label{subsubsec:lexical_overlap}
+
+The lexical overlap term captures direct keyword-level matching between the rewritten query and a visual fact:
+\begin{equation}
+\operatorname{overlap}(q_t, f_{i,k})
+=
+\frac{|T(q_t) \cap T(f_{i,k})|}{|T(q_t)|},
+\end{equation}
+where $T(\cdot)$ denotes the set of normalized tokens or phrases. This term naturally helps preserve explicit user constraints, such as object names, attributes, actions, or scene keywords.
+
+\subsubsection{Discriminativeness}
+\label{subsubsec:discriminativeness}
+
+The discriminativeness term measures how well a visual fact distinguishes one retrieved candidate from the others. We first compute the candidate-level frequency of a fact:
+\begin{equation}
+\operatorname{freq}(f_{i,k}, \mathcal{C}_t)
+=
+\sum_{c_j \in \mathcal{C}_t}
+\mathbb{I}\left[f_{i,k} \in \mathcal{F}_j\right],
+\end{equation}
+where
+\begin{equation}
+\mathbb{I}\left[f_{i,k} \in \mathcal{F}_j\right]
+=
+\begin{cases}
+1, & \text{if } f_{i,k} \text{ appears in } \mathcal{F}_j,\\
+0, & \text{otherwise.}
+\end{cases}
+\end{equation}
+Thus, $\operatorname{freq}(f_{i,k}, \mathcal{C}_t)$ counts the number of retrieved candidates whose visual fact set contains $f_{i,k}$.
+
+We define the discriminativeness score using a normalized log-inverse frequency:
+\begin{equation}
+\operatorname{disc}(f_{i,k}, \mathcal{C}_t)
+=
+\frac{
+\log
+\left(
+|\mathcal{C}_t| /
+\operatorname{freq}(f_{i,k}, \mathcal{C}_t)
+\right)
+}
+{
+\log |\mathcal{C}_t|
+}.
+\end{equation}
+Since $f_{i,k}$ belongs to a retrieved candidate, $1 \leq \operatorname{freq}(f_{i,k}, \mathcal{C}_t) \leq |\mathcal{C}_t|$, so $\operatorname{disc}(f_{i,k}, \mathcal{C}_t) \in [0,1]$. A rare fact among retrieved candidates receives a higher score, while a common fact receives a lower score.
+
+\subsubsection{Contradiction Penalty}
+\label{subsubsec:contradiction_penalty}
+
+The contradiction term penalizes facts that conflict with the rewritten query. We define $\mathrm{Contradict}(f_{i,k}, q_t)$ as a Boolean predicate that checks whether the visual fact and the query contain opposite visual concepts, such as indoor/outdoor, inside/outside, or sitting/standing. The contradiction penalty is then defined as
+\begin{equation}
+\operatorname{contra}(f_{i,k}, q_t)
+=
+\mathbb{I}\left[\mathrm{Contradict}(f_{i,k}, q_t)\right],
+\end{equation}
+where
+\begin{equation}
+\operatorname{contra}(f_{i,k}, q_t)
+\in \{0,1\}.
+\end{equation}
+If the fact contradicts the query, the penalty is activated and subtracted from the final score. Otherwise, the penalty is zero.
+
+In our implementation, we set $\alpha = 0.5$, $\beta = 0.3$, $\gamma = 0.2$, $\delta = 0.5$, and $m = 4$. These values prioritize semantic relevance while still considering lexical matching, candidate-level discriminativeness, and query-fact contradiction.
+
+\subsection{Candidate-Grounded LLM Diagnosis}
+\label{subsec:candidate_grounded_diagnosis}
+
+After QAFS, each retrieved candidate is represented by a compact evidence set $\mathcal{S}_i$ instead of the full visual fact set $\mathcal{F}_i$. RAIR constructs a candidate-grounded prompt for the LLM using the dialogue context, the rewritten query, the retrieved candidates, and their selected evidence:
+\begin{equation}
+    \mathcal{P}_t =
+    \left(
+    \mathcal{H}_t,
+    q_t,
+    \{(I_i, d_i, \mathcal{S}_i)\}_{c_i \in \mathcal{C}_t}
+    \right).
+\end{equation}
+
+The LLM then performs candidate-grounded diagnosis:
+\begin{equation}
+    \mathcal{G}_t =
+    \mathrm{LLM}_{\mathrm{diag}}(\mathcal{P}_t),
+\end{equation}
+where $\mathcal{G}_t$ contains candidate-level observations. These observations identify which visual requirements are satisfied, which requirements are missing, and which selected facts may conflict with the current query.
+
+By grounding the LLM input with query-selected visual facts, RAIR reduces the risk of noisy or hallucinated reasoning. Instead of asking the LLM to reason from global captions or unfiltered facts, RAIR provides compact evidence that is explicitly selected according to the current user intent.
+
+\subsection{Reasoned Refinement Suggestions}
+\label{subsec:reasoned_refinement}
+
+Based on the candidate-grounded diagnosis $\mathcal{G}_t$, RAIR generates reasoned refinement suggestions:
+\begin{equation}
+    \mathcal{R}_t =
+    \mathrm{LLM}_{\mathrm{refine}}(\mathcal{H}_t, q_t, \mathcal{G}_t).
+\end{equation}
+The suggestions are designed to help the user clarify the retrieval intent. For example, the system may suggest adding a missing object, specifying an action, refining the scene type, clarifying object relationships, or removing an ambiguous constraint.
+
+The user can accept, reject, or modify the suggestions, producing the next query $Q_{t+1}$. The dialogue context is then updated as
+\begin{equation}
+    \mathcal{H}_{t+1}
+    =
+    \mathcal{H}_t \cup \{S_t, Q_{t+1}\}.
+\end{equation}
+This forms an interactive retrieval loop in which retrieval results and LLM-based reasoning jointly guide the user toward more accurate image search.
