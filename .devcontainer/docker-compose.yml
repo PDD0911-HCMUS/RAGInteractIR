@@ -1,0 +1,34 @@
+services:
+  rair-vf:
+    build:
+      context: ..
+      dockerfile: Dockerfile.gpu
+    image: rair-vf:gpu-dev
+    container_name: rair-vf-dev
+    working_dir: /workspace/app
+    command: sleep infinity
+    env_file:
+      - devcontainer.env
+    environment:
+      HF_HOME: /workspace/.cache/huggingface
+      TRANSFORMERS_CACHE: /workspace/.cache/huggingface
+      TORCH_HOME: /workspace/.cache/torch
+      PYTHONPATH: /workspace/app
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    ports:
+      - "8000:8000"
+    volumes:
+      - ..:/workspace/app
+      - ${RAIR_DATASETS_PATH:-../datasets}:/workspace/app/datasets
+      - ${RAIR_HF_CACHE_PATH:-../.cache/huggingface}:/workspace/.cache/huggingface
+      - ${RAIR_TORCH_CACHE_PATH:-../.cache/torch}:/workspace/.cache/torch
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              device_ids:
+                - "${RAIR_GPU_DEVICE:-0}"
+              capabilities:
+                - gpu
