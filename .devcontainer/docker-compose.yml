@@ -14,6 +14,7 @@ services:
       TRANSFORMERS_CACHE: /workspace/.cache/huggingface
       TORCH_HOME: /workspace/.cache/torch
       PYTHONPATH: /workspace/app
+      NVIDIA_VISIBLE_DEVICES: ${RAIR_GPU_DEVICE:-all}
     extra_hosts:
       - "host.docker.internal:host-gateway"
     ports:
@@ -28,7 +29,6 @@ services:
         reservations:
           devices:
             - driver: nvidia
-              device_ids:
-                - "${RAIR_GPU_DEVICE:-0}"
+              count: all
               capabilities:
                 - gpu
