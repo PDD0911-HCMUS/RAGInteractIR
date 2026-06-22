@@ -4,7 +4,7 @@ from typing import Any, Dict, Iterable, List, Optional
 
 class QVFS:
     """
-    Query-aware Visual Fact Selection.
+    Query-aware Visual Fact Selection (QVFS).
 
     Scores candidate visual facts with:
       score(f | q, c_i) =
@@ -12,6 +12,11 @@ class QVFS:
         + beta  * lexical_overlap(q, f)
         + gamma * discriminativeness(f, candidates)
         - delta * contradiction_penalty(f, q)
+
+    This implementation follows the MIRU RAIR-VF formulation:
+    - lexical overlap is normalized by query tokens;
+    - discriminativeness is fact-level rarity over retrieved candidates;
+    - contradiction is a binary penalty.
 
     The service expects an embedding service with embed_texts(texts), which is
     already provided by VisDialGPTCLIPService.
@@ -88,37 +93,52 @@ class QVFS:
 
     @staticmethod
     def lexical_overlap_score(query_tokens: set[str], fact_tokens: set[str]) -> float:
-        if not fact_tokens:
+        if not query_tokens:
             return 0.0
-        return len(query_tokens & fact_tokens) / len(fact_tokens)
+        return len(query_tokens & fact_tokens) / len(query_tokens)
 
     def contradiction_penalty(self, query_tokens: set[str], fact_tokens: set[str]) -> float:
-        penalty = 0.0
         for left, right in self.contradiction_pairs:
             if left in query_tokens and right in fact_tokens:
-                penalty += 1.0
+                return 1.0
             if right in query_tokens and left in fact_tokens:
-                penalty += 1.0
+                return 1.0
 
         negation_tokens = {"no", "not", "without"}
         if query_tokens & fact_tokens and fact_tokens & negation_tokens:
-            penalty += 0.5
-        return penalty
+            return 1.0
+        return 0.0
 
-    @staticmethod
+    def normalized_fact_key(self, fact: str) -> str:
+        return " ".join(sorted(self.tokenize(fact)))
+
+    def fact_document_frequency(
+        self,
+        evidence: List[Dict[str, Any]],
+    ) -> Dict[str, int]:
+        fact_df: Dict[str, int] = {}
+        for candidate in evidence:
+            candidate_fact_keys = {
+                self.normalized_fact_key(fact)
+                for fact in self.evidence_facts(candidate)
+            }
+            for key in candidate_fact_keys:
+                if key:
+                    fact_df[key] = fact_df.get(key, 0) + 1
+        return fact_df
+
     def discriminativeness_score(
-        fact_tokens: set[str],
-        candidate_token_df: Dict[str, int],
+        self,
+        fact: str,
+        fact_df: Dict[str, int],
         num_candidates: int,
     ) -> float:
-        if not fact_tokens or num_candidates <= 1:
+        if num_candidates <= 1:
             return 0.0
 
-        scores = []
-        for token in fact_tokens:
-            df = candidate_token_df.get(token, 1)
-            scores.append(1.0 - (df - 1) / max(1, num_candidates - 1))
-        return sum(scores) / len(scores)
+        key = self.normalized_fact_key(fact)
+        df = max(1, min(num_candidates, fact_df.get(key, 1)))
+        return 1.0 - (df - 1) / max(1, num_candidates - 1)
 
     def sim_clip_text(self, query: str, facts: List[str]) -> Dict[str, float]:
         if not facts:
@@ -133,25 +153,12 @@ class QVFS:
             for fact, score in zip(facts, similarities)
         }
 
-    def candidate_token_document_frequency(
-        self,
-        evidence: List[Dict[str, Any]],
-    ) -> Dict[str, int]:
-        token_df: Dict[str, int] = {}
-        for candidate in evidence:
-            candidate_tokens = set()
-            for fact in self.evidence_facts(candidate):
-                candidate_tokens.update(self.tokenize(fact))
-            for token in candidate_tokens:
-                token_df[token] = token_df.get(token, 0) + 1
-        return token_df
-
     def score_fact(
         self,
         query_tokens: set[str],
         fact: str,
         clip_scores: Dict[str, float],
-        candidate_token_df: Dict[str, int],
+        fact_df: Dict[str, int],
         num_candidates: int,
     ) -> Dict[str, Any]:
         fact_tokens = self.tokenize(fact)
@@ -159,8 +166,8 @@ class QVFS:
             "clip": clip_scores.get(fact, 0.0),
             "lexical": self.lexical_overlap_score(query_tokens, fact_tokens),
             "discriminative": self.discriminativeness_score(
-                fact_tokens=fact_tokens,
-                candidate_token_df=candidate_token_df,
+                fact=fact,
+                fact_df=fact_df,
                 num_candidates=num_candidates,
             ),
             "contradiction": self.contradiction_penalty(query_tokens, fact_tokens),
@@ -189,7 +196,7 @@ class QVFS:
         clip_scores = self.sim_clip_text(query, all_facts)
         query_tokens = self.tokenize(query)
         num_candidates = len(evidence)
-        candidate_token_df = self.candidate_token_document_frequency(evidence)
+        fact_df = self.fact_document_frequency(evidence)
 
         selected_evidence = []
         for candidate in evidence:
@@ -199,7 +206,7 @@ class QVFS:
                     query_tokens=query_tokens,
                     fact=fact,
                     clip_scores=clip_scores,
-                    candidate_token_df=candidate_token_df,
+                    fact_df=fact_df,
                     num_candidates=num_candidates,
                 )
                 for fact in facts
