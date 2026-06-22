@@ -138,8 +138,53 @@ def strip_evidence_if_needed(turn_record: Dict[str, Any], save_evidence: bool) -
     return item
 
 
+def safe_log_filename(value: Any) -> str:
+    text = str(value or "unknown").strip()
+    text = "".join(ch if ch.isalnum() or ch in {"-", "_"} else "_" for ch in text)
+    return text or "unknown"
+
+
+def write_sample_conversation_log(
+    log_dir: Optional[Path],
+    result: Dict[str, Any],
+    sample_index: int,
+) -> None:
+    if log_dir is None:
+        return
+
+    log_dir.mkdir(parents=True, exist_ok=True)
+    image_id = safe_log_filename(result.get("image_id"))
+    dialog_index = safe_log_filename(result.get("dialog_index"))
+    output_path = log_dir / f"{image_id}.json"
+    if output_path.exists():
+        output_path = log_dir / f"{image_id}_dialog_{dialog_index}_sample_{sample_index}.json"
+
+    payload = {
+        "image_id": result.get("image_id"),
+        "image_path": result.get("image_path"),
+        "split": result.get("split"),
+        "dialog_index": result.get("dialog_index"),
+        "scenario_sample_id": result.get("scenario_sample_id"),
+        "base_caption": result.get("base_caption"),
+        "rewritten_query": result.get("rewritten_query"),
+        "methods": {},
+    }
+
+    for method, method_result in (result.get("methods") or {}).items():
+        payload["methods"][method] = {
+            "initial_query": method_result.get("initial_query"),
+            "final_query": method_result.get("final_query"),
+            "final": method_result.get("final"),
+            "turns": method_result.get("turns", []),
+        }
+
+    with output_path.open("w", encoding="utf-8") as f:
+        json.dump(payload, f, ensure_ascii=False, indent=2)
+
+
 async def run_method_turns(
     service: Any,
+    user_simulator: Optional[Any],
     gallery: Dict[str, Any],
     sample: Dict[str, Any],
     method: str,
@@ -155,6 +200,7 @@ async def run_method_turns(
     fact_gamma: float,
     fact_delta: float,
     save_evidence: bool,
+    selection_policy: str,
 ) -> Dict[str, Any]:
     current_query = initial_query
     current_ids, current_captions, current_scores = service.faiss_search(
@@ -200,19 +246,53 @@ async def run_method_turns(
             sample,
             current_query=current_query,
         )
-        selected = choose_oracle_suggestion(
-            suggestions,
-            sample,
-            current_query=current_query,
-            min_overlap=oracle_overlap_threshold,
-        )
-        interaction_action = "accept" if selected else "no_op"
-        if selected:
-            next_query, compose_latency_ms = await service.compose_refined_query(
+
+        user_simulation = None
+        selected = None
+        if selection_policy == "llm_user_sim":
+            if user_simulator is None:
+                raise ValueError("llm_user_sim requires a UserSimulationService instance")
+            user_simulation, compose_latency_ms = await user_simulator.simulate_turn(
+                sample=sample,
                 current_query=current_query,
-                accepted_suggestion=selected,
+                suggestions=suggestions,
+                candidate_evidence=evidence,
+                turn_id=turn_id,
             )
+            interaction_action = user_simulation.get("action", "reject")
+            next_query = user_simulation.get("refined_query") or current_query
+            selected = {
+                "user_action": interaction_action,
+                "selected_suggestions": user_simulation.get("selected_suggestions", []),
+                "added_target_details": user_simulation.get("added_target_details", []),
+                "removed_details": user_simulation.get("removed_details", []),
+                "reason": user_simulation.get("reason", ""),
+            }
+            if interaction_action == "reject" or next_query == current_query:
+                interaction_action = "no_op"
         else:
+            selected = choose_oracle_suggestion(
+                suggestions,
+                sample,
+                current_query=current_query,
+                min_overlap=oracle_overlap_threshold,
+            )
+            interaction_action = "accept" if selected else "no_op"
+            if selected:
+                next_query, compose_latency_ms = await service.compose_refined_query(
+                    current_query=current_query,
+                    accepted_suggestion=selected,
+                )
+            else:
+                next_query = current_query
+                compose_latency_ms = 0
+
+        if selection_policy == "llm_user_sim" and not next_query:
+            next_query = current_query
+            compose_latency_ms = 0
+            interaction_action = "no_op"
+
+        if selection_policy != "llm_user_sim" and not selected:
             next_query = current_query
             compose_latency_ms = 0
 
@@ -228,8 +308,9 @@ async def run_method_turns(
             "query": next_query,
             "interaction_action": interaction_action,
             "compose_latency_ms": compose_latency_ms,
-            "query_refinement_policy": "llm_compose" if selected else "no_op",
+            "query_refinement_policy": selection_policy if interaction_action != "no_op" else "no_op",
             "selected_suggestion": selected,
+            "user_simulation": user_simulation,
             "suggestions": suggestions,
             "diagnosis": reasoning.get("diagnosis", {}),
             "candidate_evidence": evidence,
@@ -263,6 +344,7 @@ async def run_method_turns(
 
 async def evaluate_sample(
     service: Any,
+    user_simulator: Optional[Any],
     gallery: Dict[str, Any],
     sample: Dict[str, Any],
     methods: List[str],
@@ -277,6 +359,7 @@ async def evaluate_sample(
     fact_gamma: float,
     fact_delta: float,
     save_evidence: bool,
+    selection_policy: str,
 ) -> Dict[str, Any]:
     rewritten_query, _ = await service.rewrite_query(build_rewrite_context(sample))
 
@@ -284,6 +367,7 @@ async def evaluate_sample(
     for method in methods:
         method_results[method] = await run_method_turns(
             service=service,
+            user_simulator=user_simulator,
             gallery=gallery,
             sample=sample,
             method=method,
@@ -299,6 +383,7 @@ async def evaluate_sample(
             fact_gamma=fact_gamma,
             fact_delta=fact_delta,
             save_evidence=save_evidence,
+            selection_policy=selection_policy,
         )
 
     return {
@@ -351,10 +436,19 @@ def summarize_e3(results: List[Dict[str, Any]], methods: List[str], ks: List[int
                 item for item in turn_items if item.get("turn", 0) > 0
             ]
             if interaction_items:
-                accepted = sum(1 for item in interaction_items if item.get("interaction_action") == "accept")
+                active_actions = {"accept", "edit", "combine", "add_detail", "remove_detail"}
+                accepted = sum(1 for item in interaction_items if item.get("interaction_action") in active_actions)
                 turn_summary["interaction"] = {
                     "accept_rate": accepted / len(interaction_items),
                     "no_op_rate": 1.0 - (accepted / len(interaction_items)),
+                    "edit_rate": (
+                        sum(1 for item in interaction_items if item.get("interaction_action") == "edit")
+                        / len(interaction_items)
+                    ),
+                    "combine_rate": (
+                        sum(1 for item in interaction_items if item.get("interaction_action") == "combine")
+                        / len(interaction_items)
+                    ),
                     "improved_rate": sum(item.get("improved", 0) for item in interaction_items) / len(interaction_items),
                     "worsened_rate": sum(item.get("worsened", 0) for item in interaction_items) / len(interaction_items),
                     "lost_target_rate": sum(item.get("lost_target", 0) for item in interaction_items) / len(interaction_items),
@@ -383,6 +477,7 @@ async def main_async(args: argparse.Namespace) -> None:
 
     from Services.LocalLLMService import LocalLLMService
     from Services.OpenAIService import OpenAIService
+    from Services.UserSimulationService import UserSimulationService
     from Services.VisDialGPTCLIPService import VisDialGPTCLIPService
 
     if args.llm_provider == "local":
@@ -402,6 +497,14 @@ async def main_async(args: argparse.Namespace) -> None:
         openai_service=llm_service,
         reasoning_model=args.local_llm_model if args.llm_provider == "local" else args.reasoning_model,
     )
+    user_simulator = None
+    if args.selection_policy == "llm_user_sim":
+        user_simulator = UserSimulationService(
+            llm_service=llm_service,
+            model_name=args.user_sim_model,
+            max_output_tokens=args.user_sim_max_output_tokens,
+            temperature=args.user_sim_temperature,
+        )
     gallery = service.build_gallery()
     overlap = compute_gallery_overlap(samples, gallery)
     if overlap["overlap"] == 0:
@@ -420,6 +523,7 @@ async def main_async(args: argparse.Namespace) -> None:
         try:
             result = await evaluate_sample(
                 service=service,
+                user_simulator=user_simulator,
                 gallery=gallery,
                 sample=sample,
                 methods=methods,
@@ -434,6 +538,7 @@ async def main_async(args: argparse.Namespace) -> None:
                 fact_gamma=args.fact_gamma,
                 fact_delta=args.fact_delta,
                 save_evidence=args.save_evidence,
+                selection_policy=args.selection_policy,
             )
         except Exception:
             if not args.continue_on_error:
@@ -450,6 +555,11 @@ async def main_async(args: argparse.Namespace) -> None:
             }
 
         results.append(result)
+        write_sample_conversation_log(
+            log_dir=args.conversation_log_dir,
+            result=result,
+            sample_index=index,
+        )
         if args.output_jsonl:
             args.output_jsonl.parent.mkdir(parents=True, exist_ok=True)
             with args.output_jsonl.open("a", encoding="utf-8") as f:
@@ -481,8 +591,10 @@ async def main_async(args: argparse.Namespace) -> None:
             "llm_provider": args.llm_provider,
             "reasoning_model": args.reasoning_model,
             "local_llm_model": args.local_llm_model,
+            "user_sim_model": args.user_sim_model,
             "gallery_overlap": overlap,
-            "interaction_policy": "novel_target_fact_overlap_accept_or_no_op",
+            "interaction_policy": args.selection_policy,
+            "conversation_log_dir": str(args.conversation_log_dir) if args.conversation_log_dir else None,
         },
         "summary": summarize_e3(results, methods, ks, args.turns),
         "results": results,
@@ -529,7 +641,26 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--local-llm-dtype", default=os.environ.get("LOCAL_LLM_DTYPE", "auto"))
     parser.add_argument("--local-llm-max-new-tokens", type=int, default=768)
     parser.add_argument("--local-llm-online", action="store_true")
+    parser.add_argument(
+        "--selection-policy",
+        choices=["oracle_overlap", "llm_user_sim"],
+        default="oracle_overlap",
+        help="How E3 converts RAIR suggestions into the next user query.",
+    )
+    parser.add_argument(
+        "--user-sim-model",
+        default=None,
+        help="Optional model override for the simulated user. Leave empty to reuse the active LLM model.",
+    )
+    parser.add_argument("--user-sim-max-output-tokens", type=int, default=512)
+    parser.add_argument("--user-sim-temperature", type=float, default=0.0)
     parser.add_argument("--save-evidence", action="store_true")
+    parser.add_argument(
+        "--conversation-log-dir",
+        type=Path,
+        default=None,
+        help="Optional directory for one JSON interaction log per target image.",
+    )
     parser.add_argument("--output", type=Path, default=Path("e3_turn_by_turn_results.json"))
     parser.add_argument("--output-jsonl", type=Path, default=None)
     parser.add_argument("--log-level", default="INFO")

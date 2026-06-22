@@ -55,3 +55,22 @@ class PromptCollectionService:
             "Accepted refinement:{accepted_suggestion}\n"
             "JSON:{{\"refined_query\":\"...\"}}"
         )
+
+        self.simulate_user_edit = (
+            "Simulate a target-aware user in an interactive image retrieval session. "
+            "The user knows the target image facts, sees the system suggestions and retrieved evidence, "
+            "and may accept, edit, combine, or reject suggestions. Produce the next search query that "
+            "a careful user would submit. Use only target-supported visual details. Remove candidate "
+            "details that conflict with the target. Keep the refined query concise and CLIP-friendly. "
+            "Return valid JSON only.\n"
+            "Context:{context}\n"
+            "JSON schema:"
+            "{{"
+            "\"action\":\"accept|edit|combine|reject|add_detail|remove_detail\","
+            "\"selected_suggestions\":[\"...\"],"
+            "\"added_target_details\":[\"...\"],"
+            "\"removed_details\":[\"...\"],"
+            "\"refined_query\":\"...\","
+            "\"reason\":\"...\""
+            "}}"
+        )
