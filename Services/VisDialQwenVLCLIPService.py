@@ -50,6 +50,15 @@ class VisDialCLIPService:
         ).to(self.device)
 
         feats = self.model.get_text_features(**inputs)
+        if not torch.is_tensor(feats):
+            if hasattr(feats, "text_embeds") and feats.text_embeds is not None:
+                feats = feats.text_embeds
+            elif hasattr(feats, "pooler_output") and feats.pooler_output is not None:
+                feats = feats.pooler_output
+            elif hasattr(feats, "last_hidden_state") and feats.last_hidden_state is not None:
+                feats = feats.last_hidden_state[:, 0]
+            else:
+                raise TypeError(f"Unsupported CLIP text feature output: {type(feats)!r}")
         feats = F.normalize(feats, dim=-1)
 
         return feats.cpu()

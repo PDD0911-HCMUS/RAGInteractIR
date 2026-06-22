@@ -4,7 +4,6 @@ services:
       context: ..
       dockerfile: Dockerfile.gpu
     image: rair-vf:gpu-dev
-    container_name: rair-vf-dev
     working_dir: /workspace/app
     command: sleep infinity
     env_file:
