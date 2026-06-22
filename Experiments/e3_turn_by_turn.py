@@ -26,7 +26,7 @@ from Experiments.e2_rair_comparison import (
     rank_change_metrics,
     score_oracle_suggestions,
 )
-from Services.QAFSService import QASF
+from Services.QVFSService import QVFS
 
 
 logger = logging.getLogger("rair.e3")
@@ -111,8 +111,8 @@ def build_evidence(
         top_k=evidence_top_k,
     )
 
-    if method == "rair_full_qafs":
-        evidence = QASF(
+    if method in {"rair_full_qvfs", "rair_full_qafs"}:
+        evidence = QVFS(
             embedding_service=service,
             top_m=fact_top_m,
             alpha=fact_alpha,
@@ -470,7 +470,7 @@ async def main_async(args: argparse.Namespace) -> None:
             "evidence_top_k": args.evidence_top_k,
             "oracle_overlap_threshold": args.oracle_overlap_threshold,
             "fact_selection": {
-                "qafs_top_m": args.fact_top_m,
+                "qvfs_top_m": args.fact_top_m,
                 "alpha": args.fact_alpha,
                 "beta": args.fact_beta,
                 "gamma": args.fact_gamma,
@@ -512,8 +512,8 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--methods",
         nargs="+",
-        choices=["rair_without_facts", "rair_full", "rair_full_qafs"],
-        default=["rair_full_qafs"],
+        choices=["rair_without_facts", "rair_full", "rair_full_qvfs", "rair_full_qafs"],
+        default=["rair_full_qvfs"],
     )
     parser.add_argument("--fact-top-m", type=int, default=4)
     parser.add_argument("--fact-alpha", type=float, default=0.5)

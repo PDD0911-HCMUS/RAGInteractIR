@@ -1,4 +1,4 @@
-# RAIR: Motivation and Method Draft
+﻿# RAIR: Motivation and Method Draft
 
 ## Motivation
 
@@ -88,8 +88,8 @@ For each interaction turn, RAIR follows the pipeline below:
    For the top retrieved candidates, RAIR loads the image caption and
    dialogue-derived visual facts from the database.
 
-4. **Query-Aware Visual Fact Selection.**  
-   Because candidate facts can be noisy, RAIR applies QAFS to select a compact
+4. **Query-aware Visual Fact Selection.**  
+   Because candidate facts can be noisy, RAIR applies QVFS to select a compact
    subset of relevant and discriminative facts for each candidate.
 
 5. **Candidate-grounded diagnosis.**  
@@ -108,15 +108,15 @@ For each interaction turn, RAIR follows the pipeline below:
    suggestions are stored so that the system avoids reintroducing them in later
    turns.
 
-## Query-Aware Visual Fact Selection
+## Query-aware Visual Fact Selection
 
 A key challenge is that dialogue-derived visual facts are informative but noisy.
 Some facts may be irrelevant to the current query, overly specific, common across
 all candidates, or contradictory to the user's current intent. Feeding all facts
 to the LLM can therefore degrade suggestion quality.
 
-We introduce **Query-Aware Visual Fact Selection (QAFS)**. For a query \(q\), a
-candidate image \(c_i\), and its fact set \(F_i\), QAFS scores each fact
+We introduce **Query-aware Visual Fact Selection (QVFS)**. For a query \(q\), a
+candidate image \(c_i\), and its fact set \(F_i\), QVFS scores each fact
 \(f \in F_i\) as:
 
 \[
@@ -184,8 +184,8 @@ This work aims to make the following contributions:
    visual facts, and use them as candidate-side evidence for retrieval
    diagnosis.
 
-3. **Query-Aware Visual Fact Selection.**  
-   We introduce QAFS, a lightweight fact-selection module that filters noisy
+3. **Query-aware Visual Fact Selection.**  
+   We introduce QVFS, a lightweight fact-selection module that filters noisy
    visual facts using semantic relevance, lexical relevance, discriminativeness,
    and contradiction penalties.
 
@@ -197,12 +197,13 @@ This work aims to make the following contributions:
 ## Current Empirical Status
 
 Preliminary experiments show that naive concatenation of all visual facts can
-hurt retrieval, confirming that fact selection is necessary. QAFS improves the
+hurt retrieval, confirming that fact selection is necessary. QVFS improves the
 grounding quality of generated suggestions and increases the number of accepted
 and rank-improving refinements in some settings. However, one-turn RAIR does not
 yet consistently outperform rewrite-only retrieval, suggesting that query
 composition and multi-turn refinement remain important areas for improvement.
 
-Thus, the current claim should be framed carefully: RAIR and QAFS provide a
+Thus, the current claim should be framed carefully: RAIR and QVFS provide a
 structured mechanism for reasoning and interaction in image retrieval, while
 further experiments are needed to establish robust retrieval gains.
+

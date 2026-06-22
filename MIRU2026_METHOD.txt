@@ -1,7 +1,7 @@
-\section{Method}
+﻿\section{Method}
 \label{sec:method}
 
-We propose \textbf{RAIR}, a reasoning-augmented interactive retrieval framework for dialogue-based image retrieval. RAIR combines embedding-based candidate retrieval, query-aware visual fact selection, and candidate-grounded large language model (LLM) reasoning. Unlike conventional retrieval methods that directly return visually or semantically similar images, RAIR further analyzes the retrieved candidates and generates refinement suggestions for the next interaction round. The key idea is to provide the LLM with compact and query-relevant visual evidence, rather than noisy or unfiltered candidate information.
+We propose \textbf{RAIR}, a reasoning-augmented interactive retrieval framework for dialogue-based image retrieval. RAIR combines embedding-based candidate retrieval, Query-aware Visual Fact Selection, and candidate-grounded large language model (LLM) reasoning. Unlike conventional retrieval methods that directly return visually or semantically similar images, RAIR further analyzes the retrieved candidates and generates refinement suggestions for the next interaction round. The key idea is to provide the LLM with compact and query-relevant visual evidence, rather than noisy or unfiltered candidate information.
 
 \subsection{Problem Formulation}
 \label{subsec:problem_formulation}
@@ -60,12 +60,12 @@ where $\operatorname{sim}(\cdot,\cdot)$ denotes cosine similarity. The retrieved
 \end{equation}
 where $r_1, r_2, \ldots, r_K$ are the indices of the top-$K$ retrieved candidates. Each retrieved candidate $c_{r_j}$ contains its image, caption, and associated visual facts.
 
-\subsection{Query-Aware Visual Fact Selection}
-\label{subsec:qafs}
+\subsection{Query-aware Visual Fact Selection}
+\label{subsec:QVFS}
 
-A retrieved candidate may contain many visual facts, but only a subset of them is useful for judging whether the candidate satisfies the current query. Passing all facts to the LLM can introduce irrelevant information, increase prompt length, and reduce the reliability of candidate diagnosis. Therefore, we introduce \textbf{Query-Aware Visual Fact Selection} (QAFS), which selects a compact set of query-relevant and discriminative facts for each retrieved candidate.
+A retrieved candidate may contain many visual facts, but only a subset of them is useful for judging whether the candidate satisfies the current query. Passing all facts to the LLM can introduce irrelevant information, increase prompt length, and reduce the reliability of candidate diagnosis. Therefore, we introduce \textbf{Query-aware Visual Fact Selection} (QVFS), which selects a compact set of query-relevant and discriminative facts for each retrieved candidate.
 
-Given the rewritten query $q_t$, a retrieved candidate $c_i \in \mathcal{C}_t$, and its visual fact set $\mathcal{F}_i$, QAFS selects the top-$m$ facts with the highest query-aware scores:
+Given the rewritten query $q_t$, a retrieved candidate $c_i \in \mathcal{C}_t$, and its visual fact set $\mathcal{F}_i$, QVFS selects the top-$m$ facts with the highest query-aware scores:
 \begin{equation}
     \mathcal{S}_i =
     \operatorname{TopM}_{f_{i,k} \in \mathcal{F}_i}
@@ -73,7 +73,7 @@ Given the rewritten query $q_t$, a retrieved candidate $c_i \in \mathcal{C}_t$, 
 \end{equation}
 where $\mathcal{S}_i$ denotes the selected evidence set for candidate $c_i$. The score depends on the query $q_t$, the current candidate $c_i$, and the retrieved candidate set $\mathcal{C}_t$, since one of the scoring terms measures how discriminative a fact is among the retrieved candidates.
 
-The QAFS scoring function is defined as
+The QVFS scoring function is defined as
 \begin{equation}
 \begin{aligned}
 \operatorname{score}(f_{i,k} \mid q_t, c_i, \mathcal{C}_t)
@@ -83,7 +83,7 @@ The QAFS scoring function is defined as
 &+ \gamma \cdot \operatorname{disc}(f_{i,k}, \mathcal{C}_t) \\
 &- \delta \cdot \operatorname{contra}(f_{i,k}, q_t),
 \end{aligned}
-\label{eq:qafs_score}
+\label{eq:QVFS_score}
 \end{equation}
 where $\alpha$, $\beta$, $\gamma$, and $\delta$ are weighting coefficients.
 
@@ -99,7 +99,7 @@ The semantic similarity term measures the meaning-level relevance between the re
 }{2}.
 \end{equation}
 
-This term allows QAFS to select facts that are semantically related to the query even when they do not share identical surface words.
+This term allows QVFS to select facts that are semantically related to the query even when they do not share identical surface words.
 
 \subsubsection{Lexical Overlap}
 \label{subsubsec:lexical_overlap}
@@ -171,7 +171,7 @@ In our implementation, we set $\alpha = 0.5$, $\beta = 0.3$, $\gamma = 0.2$, $\d
 \subsection{Candidate-Grounded LLM Diagnosis}
 \label{subsec:candidate_grounded_diagnosis}
 
-After QAFS, each retrieved candidate is represented by a compact evidence set $\mathcal{S}_i$ instead of the full visual fact set $\mathcal{F}_i$. RAIR constructs a candidate-grounded prompt for the LLM using the dialogue context, the rewritten query, the retrieved candidates, and their selected evidence:
+After QVFS, each retrieved candidate is represented by a compact evidence set $\mathcal{S}_i$ instead of the full visual fact set $\mathcal{F}_i$. RAIR constructs a candidate-grounded prompt for the LLM using the dialogue context, the rewritten query, the retrieved candidates, and their selected evidence:
 \begin{equation}
     \mathcal{P}_t =
     \left(

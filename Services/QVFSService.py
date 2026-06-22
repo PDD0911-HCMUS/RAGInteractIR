@@ -2,9 +2,9 @@ import re
 from typing import Any, Dict, Iterable, List, Optional
 
 
-class QAFS:
+class QVFS:
     """
-    Query-Aware Visual Fact Selection.
+    Query-aware Visual Fact Selection.
 
     Scores candidate visual facts with:
       score(f | q, c_i) =
@@ -226,7 +226,7 @@ class QAFS:
                 if selected_facts
                 else candidate.get("caption", "")
             )
-            item["qafs"] = {
+            item["qvfs"] = {
                 "original_fact_count": len(facts),
                 "selected_fact_count": len(selected_facts),
                 "selected": scored_facts[: self.top_m],
@@ -242,5 +242,6 @@ class QAFS:
         return selected_evidence
 
 
-# Backward-compatible alias for earlier experiment imports.
-QASF = QAFS
+# Backward-compatible aliases for earlier experiment imports.
+QAFS = QVFS
+QASF = QVFS

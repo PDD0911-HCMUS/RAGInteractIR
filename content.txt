@@ -1,4 +1,4 @@
-uvicorn main:app --host 0.0.0.0 --port 8009
+﻿uvicorn main:app --host 0.0.0.0 --port 8009
 
 WEB-BASE: DONE
 VECTOR DATABASE: DONE
@@ -9,58 +9,58 @@ RAIR introduces an LLM reasoning layer that interprets user edits,
 retrieves contextual knowledge through RAG, 
 and guides iterative query refinement for interactive image retrieval.
 
-Rag có thể thu thập:
+Rag cÃ³ thá»ƒ thu tháº­p:
 - candidate images
 - scene graph patterns
 - dataset knowledge
 
-LLM dùng thông tin này để reasoning
+LLM dÃ¹ng thÃ´ng tin nÃ y Ä‘á»ƒ reasoning
 - analyze missmatch
 - propose edit
 - explain result
 
-LLM đóng vai trò:
+LLM Ä‘Ã³ng vai trÃ²:
 Reasoning + Query Planning + Interaction Assistance
-Các Modules:
+CÃ¡c Modules:
 - Query Interpretation
 convert free-text -> triplets
 - Query Diagnosis (Reasoning)
-sử dụng kết quả của RAG để:
-	+ xác định missmatch
-	+ xác định chủ đề
-	+ xác định đề xuất chỉnh sửa
-	+ trả kết quả của turn hiện tại
+sá»­ dá»¥ng káº¿t quáº£ cá»§a RAG Ä‘á»ƒ:
+	+ xÃ¡c Ä‘á»‹nh missmatch
+	+ xÃ¡c Ä‘á»‹nh chá»§ Ä‘á»
+	+ xÃ¡c Ä‘á»‹nh Ä‘á» xuáº¥t chá»‰nh sá»­a
+	+ tráº£ káº¿t quáº£ cá»§a turn hiá»‡n táº¡i
 - Query Refinement
-Đề xuất chỉnh sửa
-Giải thích kết quả:
-	- Lý do tại sao chọn (interpretability - khả năng giải thích)
-	- Đưa ra các gợi ý tối thiểu (interaction guidance)
-User có thể đồng ý, từ chối, hoặc sửa theo ý họ
+Äá» xuáº¥t chá»‰nh sá»­a
+Giáº£i thÃ­ch káº¿t quáº£:
+	- LÃ½ do táº¡i sao chá»n (interpretability - kháº£ nÄƒng giáº£i thÃ­ch)
+	- ÄÆ°a ra cÃ¡c gá»£i Ã½ tá»‘i thiá»ƒu (interaction guidance)
+User cÃ³ thá»ƒ Ä‘á»“ng Ã½, tá»« chá»‘i, hoáº·c sá»­a theo Ã½ há»
 
--> lặp tiếp
-=> trả về sẽ là:
+-> láº·p tiáº¿p
+=> tráº£ vá» sáº½ lÃ :
 - triplet
 - suggestions
 
 User input 
 -> [Prompt 1] Convert sang triplets 
 -> Retrieve (RAG) 
--> [Prompt 2] Suy luận kết quả từ RAG 
--> [Prompt 3] Đề Xuất chỉnh sửa, giải thích 
+-> [Prompt 2] Suy luáº­n káº¿t quáº£ tá»« RAG 
+-> [Prompt 3] Äá» Xuáº¥t chá»‰nh sá»­a, giáº£i thÃ­ch 
 -> User Edit 
-Lặp lại
+Láº·p láº¡i
 
-Đặt Global Prompt
+Äáº·t Global Prompt
 PROMPT_INTERPRET_V1
 PROMPT_REASON_V1
 PROMPT_REFINE_V1
 
 cmd:
-mklink /D F:\RAGInteractIR\datasets\MSCOCO F:\MSCOCO (tạo symlink)
+mklink /D F:\RAGInteractIR\datasets\MSCOCO F:\MSCOCO (táº¡o symlink)
 
 [
   ('system', 'You are a helpful vision-language assistant.'), 
-  ('assistant', 'Hello! I’m ChatGPT, an AI assistant created by OpenAI. I can help answer questions, explain concepts, write and edit text, brainstorm ideas, and more.'), 
+  ('assistant', 'Hello! Iâ€™m ChatGPT, an AI assistant created by OpenAI. I can help answer questions, explain concepts, write and edit text, brainstorm ideas, and more.'), 
   ('user', 'a herd of sheep standing next to each other on a dirt field'), 
   ('assistant', '
     {
@@ -78,12 +78,12 @@ mklink /D F:\RAGInteractIR\datasets\MSCOCO F:\MSCOCO (tạo symlink)
 ]
 
 
-Việc cần làm tiếp theo:
-- Suy nghĩ việc rewrite query
-- chỉnh lại cơ chế reasoning 
-  - giữ nguyên text -> tăng thêm số lượng
-  - thêm hình ảnh
-- kiểm tra lại luồng tổng quát
+Viá»‡c cáº§n lÃ m tiáº¿p theo:
+- Suy nghÄ© viá»‡c rewrite query
+- chá»‰nh láº¡i cÆ¡ cháº¿ reasoning 
+  - giá»¯ nguyÃªn text -> tÄƒng thÃªm sá»‘ lÆ°á»£ng
+  - thÃªm hÃ¬nh áº£nh
+- kiá»ƒm tra láº¡i luá»“ng tá»•ng quÃ¡t
 
 VisDial dialogue 
 -> visual fact extraction 
@@ -97,114 +97,114 @@ E4: suggestion quality
 E5: diagnosis ablation
 
 
-E2 sẽ là:
+E2 sáº½ lÃ :
 
 rewrite_only
 RAIR without facts
 RAIR full
 
-QAFS: Query-Aware Visual Fact Selection
-- Với query hiện tại q, một candidate image c_i, và tập visual facts của candidate đó:
+QVFS: Query-aware Visual Fact Selection
+- Vá»›i query hiá»‡n táº¡i q, má»™t candidate image c_i, vÃ  táº­p visual facts cá»§a candidate Ä‘Ã³:
 	F_i = {f_1, f_2, ..., f_n}
 
-	ta chọn top-m facts có điểm cao nhất:
-		S_i = TopM_f thuộc F_i score(f | q, c_i)
-C- ông thức score:
+	ta chá»n top-m facts cÃ³ Ä‘iá»ƒm cao nháº¥t:
+		S_i = TopM_f thuá»™c F_i score(f | q, c_i)
+C- Ã´ng thá»©c score:
 	score(f | q, c_i) =
-	  α · sim_clip_text(q, f)
-	+ β · lexical_overlap(q, f)
-	+ γ · discriminativeness(f, C)
-	- δ · contradiction_penalty(f, q)
+	  Î± Â· sim_clip_text(q, f)
+	+ Î² Â· lexical_overlap(q, f)
+	+ Î³ Â· discriminativeness(f, C)
+	- Î´ Â· contradiction_penalty(f, q)
 	
-- Trong đó:
+- Trong Ä‘Ã³:
 	- sim_clip_text(q, f)
-	Độ tương đồng semantic giữa query và fact, tính bằng CLIP text embedding.
+	Äá»™ tÆ°Æ¡ng Ä‘á»“ng semantic giá»¯a query vÃ  fact, tÃ­nh báº±ng CLIP text embedding.
 
 	- lexical_overlap(q, f)
-	Tỷ lệ token overlap giữa query và fact.
+	Tá»· lá»‡ token overlap giá»¯a query vÃ  fact.
 
 	- discriminativeness(f, C)
-	Mức độ fact giúp phân biệt candidate đó với các candidates khác. Fact càng hiếm trong top candidates thì điểm càng cao.
+	Má»©c Ä‘á»™ fact giÃºp phÃ¢n biá»‡t candidate Ä‘Ã³ vá»›i cÃ¡c candidates khÃ¡c. Fact cÃ ng hiáº¿m trong top candidates thÃ¬ Ä‘iá»ƒm cÃ ng cao.
 
 	- contradiction_penalty(f, q)
-	Phạt nếu fact mâu thuẫn query, ví dụ:
-		query có inside, fact có outside
-		query có indoor, fact có outdoor
-		query có sitting, fact có standing
+	Pháº¡t náº¿u fact mÃ¢u thuáº«n query, vÃ­ dá»¥:
+		query cÃ³ inside, fact cÃ³ outside
+		query cÃ³ indoor, fact cÃ³ outdoor
+		query cÃ³ sitting, fact cÃ³ standing
 
-- Tham số hiện tại:
-	α = 0.5
-	β = 0.3
-	γ = 0.2
-	δ = 0.5
+- Tham sá»‘ hiá»‡n táº¡i:
+	Î± = 0.5
+	Î² = 0.3
+	Î³ = 0.2
+	Î´ = 0.5
 	top_m = 4
 
 Experiments:
 E1. Baseline Retrieval
-- Mục tiêu: xác định baseline trước khi có RAIR.
-- So sánh:
+- Má»¥c tiÃªu: xÃ¡c Ä‘á»‹nh baseline trÆ°á»›c khi cÃ³ RAIR.
+- So sÃ¡nh:
 	caption_clip
 	raw_enriched_concat
 	rewrite_only
 
-- Ý nghĩa:
-	caption_clip: CLIP retrieval bằng caption gốc.
-	raw_enriched_concat: caption + visual facts nối thẳng.
-	rewrite_only: LLM rewrite query, chưa có RAIR interaction.
+- Ã nghÄ©a:
+	caption_clip: CLIP retrieval báº±ng caption gá»‘c.
+	raw_enriched_concat: caption + visual facts ná»‘i tháº³ng.
+	rewrite_only: LLM rewrite query, chÆ°a cÃ³ RAIR interaction.
 	
-- Kết luận hiện tại:
-	caption baseline khá mạnh.
-	raw facts concat làm tệ hơn.
-	GPT-4o rewrite-only cải thiện nhẹ so với caption.
+- Káº¿t luáº­n hiá»‡n táº¡i:
+	caption baseline khÃ¡ máº¡nh.
+	raw facts concat lÃ m tá»‡ hÆ¡n.
+	GPT-4o rewrite-only cáº£i thiá»‡n nháº¹ so vá»›i caption.
 
 E2: One-Turn RAIR Comparison
 
-- Mục tiêu: kiểm tra RAIR trong một vòng interaction.
-- Luồng:
+- Má»¥c tiÃªu: kiá»ƒm tra RAIR trong má»™t vÃ²ng interaction.
+- Luá»“ng:
 	query -> retrieve candidates -> candidate evidence -> diagnosis/suggestions
 	-> oracle accept/no-op -> refined query -> retrieve again
 	
-- So sánh:
+- So sÃ¡nh:
 	rewrite_only
 	rair_without_facts
 	rair_full
-	rair_full_qafs
+	rair_full_QVFS
 	
-- Ý nghĩa:
-	rewrite_only: không interaction.
-	rair_without_facts: RAIR chỉ dùng candidate captions.
-	rair_full: RAIR dùng captions + toàn bộ visual facts.
-	rair_full_qafs: RAIR dùng captions + facts đã lọc bằng QAFS.
+- Ã nghÄ©a:
+	rewrite_only: khÃ´ng interaction.
+	rair_without_facts: RAIR chá»‰ dÃ¹ng candidate captions.
+	rair_full: RAIR dÃ¹ng captions + toÃ n bá»™ visual facts.
+	rair_full_QVFS: RAIR dÃ¹ng captions + facts Ä‘Ã£ lá»c báº±ng QVFS.
 	
 - Metrics:
 	Hit@K, MRR, found_rate
 	accept_rate, no_op_rate
 	improved, worsened, lost_target, recovered_target
 
-- Kết luận hiện tại:
-	QAFS giúp suggestion sát target hơn.
-	Nhưng one-turn RAIR chưa vượt rewrite-only rõ ràng.
-	Vấn đề chính: suggestion append thô và dễ over-constrain.
+- Káº¿t luáº­n hiá»‡n táº¡i:
+	QVFS giÃºp suggestion sÃ¡t target hÆ¡n.
+	NhÆ°ng one-turn RAIR chÆ°a vÆ°á»£t rewrite-only rÃµ rÃ ng.
+	Váº¥n Ä‘á» chÃ­nh: suggestion append thÃ´ vÃ  dá»… over-constrain.
 	
 E3: Turn-by-Turn Multi-Round RAIR
 
-- Mục tiêu: kiểm tra RAIR đúng bản chất interactive qua nhiều lượt.
+- Má»¥c tiÃªu: kiá»ƒm tra RAIR Ä‘Ãºng báº£n cháº¥t interactive qua nhiá»u lÆ°á»£t.
 
-- Luồng:
+- Luá»“ng:
 	Turn 0: initial query -> retrieve
 	Turn 1: RAIR suggestion -> oracle feedback -> retrieve
 	Turn 2: RAIR suggestion -> oracle feedback -> retrieve
 	Turn 3: RAIR suggestion -> oracle feedback -> retrieve
 
-- So sánh chính:
+- So sÃ¡nh chÃ­nh:
 	rair_without_facts
 	rair_full
-	rair_full_qafs
+	rair_full_QVFS
 
-- Có thể thêm baseline curve:
+- CÃ³ thá»ƒ thÃªm baseline curve:
 	turn 0 = rewrite_only baseline
 
-- Metrics theo từng turn:
+- Metrics theo tá»«ng turn:
 	Hit@K_t
 	MRR_t
 	found_rate_t
@@ -213,17 +213,17 @@ E3: Turn-by-Turn Multi-Round RAIR
 	improved_rate_t
 	lost_target_rate_t
 
-- Câu hỏi cần trả lời:
-	RAIR có cải thiện dần qua turn không?
-	QAFS có giảm nhiễu qua nhiều turn không?
-	Multi-turn có recover target tốt hơn one-turn không?
-	Hay càng nhiều turn càng over-constrain?
+- CÃ¢u há»i cáº§n tráº£ lá»i:
+	RAIR cÃ³ cáº£i thiá»‡n dáº§n qua turn khÃ´ng?
+	QVFS cÃ³ giáº£m nhiá»…u qua nhiá»u turn khÃ´ng?
+	Multi-turn cÃ³ recover target tá»‘t hÆ¡n one-turn khÃ´ng?
+	Hay cÃ ng nhiá»u turn cÃ ng over-constrain?
 
 E4: Suggestion Quality Analysis
 
-- Mục tiêu: không chỉ đo retrieval, mà đo chất lượng suggestions.
+- Má»¥c tiÃªu: khÃ´ng chá»‰ Ä‘o retrieval, mÃ  Ä‘o cháº¥t lÆ°á»£ng suggestions.
 
-- Các chỉ số nên dùng:
+- CÃ¡c chá»‰ sá»‘ nÃªn dÃ¹ng:
 	coverage
 	target_overlap
 	contradiction_rate
@@ -231,24 +231,25 @@ E4: Suggestion Quality Analysis
 	accept_rate
 	rank_improvement_after_accept
 
-- Đề xuất cụ thể:
-	coverage: suggestion có chứa ít nhất một target fact/token không.
-	target_overlap: số token/fact overlap với target facts.
-	contradiction_rate: suggestion mâu thuẫn target facts.
-	unsupported_rate: suggestion không được support bởi candidate evidence.
-	accept_rate: oracle accept bao nhiêu suggestion.
-	rank_improvement_after_accept: khi accept thì rank có tốt lên không.
+- Äá» xuáº¥t cá»¥ thá»ƒ:
+	coverage: suggestion cÃ³ chá»©a Ã­t nháº¥t má»™t target fact/token khÃ´ng.
+	target_overlap: sá»‘ token/fact overlap vá»›i target facts.
+	contradiction_rate: suggestion mÃ¢u thuáº«n target facts.
+	unsupported_rate: suggestion khÃ´ng Ä‘Æ°á»£c support bá»Ÿi candidate evidence.
+	accept_rate: oracle accept bao nhiÃªu suggestion.
+	rank_improvement_after_accept: khi accept thÃ¬ rank cÃ³ tá»‘t lÃªn khÃ´ng.
 
-- So sánh:
+- So sÃ¡nh:
 	rair_without_facts
 	rair_full
-	rair_full_qafs
+	rair_full_QVFS
 
-- Câu hỏi cần trả lời:
-	Visual facts có làm suggestion cụ thể hơn không?
-	QAFS có làm suggestion ít nhiễu hơn không?
-	Suggestions được accept có thật sự cải thiện retrieval không?
-	Failure cases là do suggestion sai hay do CLIP không tận dụng được suggestion đúng?
+- CÃ¢u há»i cáº§n tráº£ lá»i:
+	Visual facts cÃ³ lÃ m suggestion cá»¥ thá»ƒ hÆ¡n khÃ´ng?
+	QVFS cÃ³ lÃ m suggestion Ã­t nhiá»…u hÆ¡n khÃ´ng?
+	Suggestions Ä‘Æ°á»£c accept cÃ³ tháº­t sá»± cáº£i thiá»‡n retrieval khÃ´ng?
+	Failure cases lÃ  do suggestion sai hay do CLIP khÃ´ng táº­n dá»¥ng Ä‘Æ°á»£c suggestion Ä‘Ãºng?
+
 
 
 

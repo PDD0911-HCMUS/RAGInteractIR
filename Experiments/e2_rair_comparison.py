@@ -22,7 +22,7 @@ from Experiments.e1_baseline_retrieval import (
     resolve_torch_device,
     summarize,
 )
-from Services.QAFSService import QASF
+from Services.QVFSService import QVFS
 
 
 logger = logging.getLogger("rair.e2")
@@ -408,7 +408,7 @@ def select_query_aware_facts(
     gamma: float,
     delta: float,
 ) -> List[Dict[str, Any]]:
-    return QASF(
+    return QVFS(
         embedding_service=service,
         top_m=top_m,
         alpha=alpha,
@@ -450,7 +450,7 @@ async def run_rair_variant(
     search_depth: int,
     evidence_top_k: int,
     with_facts: bool,
-    use_qafs: bool,
+    use_qvfs: bool,
     fact_top_m: int,
     fact_alpha: float,
     fact_beta: float,
@@ -481,7 +481,7 @@ async def run_rair_variant(
             top_k=evidence_top_k,
         )
 
-    if with_facts and use_qafs:
+    if with_facts and use_qvfs:
         evidence = select_query_aware_facts(
             service=service,
             query=rewritten_query,
@@ -571,14 +571,14 @@ async def run_rair_variant(
         "candidate_evidence": evidence,
         "fact_selection": (
             {
-                "method": "qafs",
+                "method": "qvfs",
                 "top_m": fact_top_m,
                 "alpha": fact_alpha,
                 "beta": fact_beta,
                 "gamma": fact_gamma,
                 "delta": fact_delta,
             }
-            if with_facts and use_qafs
+            if with_facts and use_qvfs
             else {"method": "none"}
         ),
         **rank_change_metrics(initial_rank, refined_rank),
@@ -628,7 +628,7 @@ async def evaluate_sample(
             search_depth=search_depth,
             evidence_top_k=evidence_top_k,
             with_facts=False,
-            use_qafs=False,
+            use_qvfs=False,
             fact_top_m=fact_top_m,
             fact_alpha=fact_alpha,
             fact_beta=fact_beta,
@@ -648,7 +648,7 @@ async def evaluate_sample(
             search_depth=search_depth,
             evidence_top_k=evidence_top_k,
             with_facts=True,
-            use_qafs=False,
+            use_qvfs=False,
             fact_top_m=fact_top_m,
             fact_alpha=fact_alpha,
             fact_beta=fact_beta,
@@ -658,8 +658,9 @@ async def evaluate_sample(
             selection_policy=selection_policy,
         )
 
-    if "rair_full_qafs" in methods:
-        method_results["rair_full_qafs"] = await run_rair_variant(
+    if "rair_full_qvfs" in methods or "rair_full_qafs" in methods:
+        method_name = "rair_full_qvfs" if "rair_full_qvfs" in methods else "rair_full_qafs"
+        method_results[method_name] = await run_rair_variant(
             service=service,
             gallery=gallery,
             sample=sample,
@@ -668,7 +669,7 @@ async def evaluate_sample(
             search_depth=search_depth,
             evidence_top_k=evidence_top_k,
             with_facts=True,
-            use_qafs=True,
+            use_qvfs=True,
             fact_top_m=fact_top_m,
             fact_alpha=fact_alpha,
             fact_beta=fact_beta,
@@ -789,7 +790,7 @@ async def main_async(args: argparse.Namespace) -> None:
             "search_depth": search_depth,
             "evidence_top_k": args.evidence_top_k,
             "fact_selection": {
-                "qafs_top_m": args.fact_top_m,
+                "qvfs_top_m": args.fact_top_m,
                 "alpha": args.fact_alpha,
                 "beta": args.fact_beta,
                 "gamma": args.fact_gamma,
@@ -853,7 +854,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--methods",
         nargs="+",
-        choices=["rewrite_only", "rair_without_facts", "rair_full", "rair_full_qafs"],
+        choices=["rewrite_only", "rair_without_facts", "rair_full", "rair_full_qvfs", "rair_full_qafs"],
         default=["rewrite_only", "rair_without_facts", "rair_full"],
     )
     parser.add_argument("--fact-top-m", type=int, default=4)

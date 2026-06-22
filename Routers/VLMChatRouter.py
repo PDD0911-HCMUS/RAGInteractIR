@@ -82,7 +82,7 @@ class VLMChatRouter:
         self.clip_device = resolve_torch_device("CLIP_DEVICE")
         self.greeting_model = os.environ.get("RAIR_GREETING_MODEL", "gpt-4o")
         self.reasoning_model = os.environ.get("RAIR_REASONING_MODEL", "gpt-4o")
-        self.use_qafs = env_bool("RAIR_USE_QAFS", True)
+        self.use_qvfs = env_bool("RAIR_USE_QVFS", env_bool("RAIR_USE_QAFS", True))
         self.evidence_top_k = env_int("RAIR_EVIDENCE_TOP_K", 3)
         self.fact_top_m = env_int("RAIR_FACT_TOP_M", 4)
         self.fact_alpha = env_float("RAIR_FACT_ALPHA", 0.5)
@@ -134,7 +134,7 @@ class VLMChatRouter:
                 device=self.clip_device,
                 openai_service=self._get_openai_service(),
                 reasoning_model=self.reasoning_model,
-                use_qafs=self.use_qafs,
+                use_qvfs=self.use_qvfs,
                 evidence_top_k=self.evidence_top_k,
                 fact_top_m=self.fact_top_m,
                 fact_alpha=self.fact_alpha,

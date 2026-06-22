@@ -26,7 +26,7 @@ from Entities.entities import VisDialCLIPCapDial
 from Services.PromptCollectionService import PromptCollectionService
 from Services.OpenAIService import OpenAIService
 from Services.TargetAnnotationService import TargetAnnotationService
-from Services.QAFSService import QAFS
+from Services.QVFSService import QVFS
 
 
 Role = Literal["system", "user", "assistant"]
@@ -49,7 +49,8 @@ class VisDialGPTCLIPService:
         device: str,
         openai_service: Optional[OpenAIService] = None,
         reasoning_model: Optional[str] = None,
-        use_qafs: bool = True,
+        use_qvfs: bool = True,
+        use_qafs: Optional[bool] = None,
         evidence_top_k: int = 3,
         fact_top_m: int = 4,
         fact_alpha: float = 0.5,
@@ -75,7 +76,7 @@ class VisDialGPTCLIPService:
 
         # Optional per-task model override
         self.reasoning_model = reasoning_model
-        self.use_qafs = use_qafs
+        self.use_qvfs = use_qvfs if use_qafs is None else use_qafs
         self.evidence_top_k = evidence_top_k
         self.fact_top_m = fact_top_m
         self.fact_alpha = fact_alpha
@@ -314,10 +315,10 @@ class VisDialGPTCLIPService:
         return evidence
 
     def select_candidate_facts(self, query: str, candidate_evidence: List[dict]) -> List[dict]:
-        if not self.use_qafs:
+        if not self.use_qvfs:
             return candidate_evidence
 
-        return QAFS(
+        return QVFS(
             embedding_service=self,
             top_m=self.fact_top_m,
             alpha=self.fact_alpha,
@@ -508,7 +509,7 @@ class VisDialGPTCLIPService:
     @staticmethod
     def _compact_candidate_evidence_for_prompt(candidate_evidence: Any) -> Any:
         """
-        Keep only reasoning-facing fields. This avoids sending QAFS score traces,
+        Keep only reasoning-facing fields. This avoids sending QVFS score traces,
         embeddings, or verbose metadata to the LLM prompt.
         """
         if not isinstance(candidate_evidence, list):
@@ -614,8 +615,8 @@ class VisDialGPTCLIPService:
             candidate_evidence=candidate_evidence_raw,
         )
         logger.info(
-            "RAIR candidate evidence top5 use_qafs=%s:\n%s",
-            self.use_qafs,
+            "RAIR candidate evidence top5 use_qvfs=%s:\n%s",
+            self.use_qvfs,
             json.dumps(candidate_evidence[:5], ensure_ascii=False, indent=2),
         )
 
@@ -636,7 +637,7 @@ class VisDialGPTCLIPService:
             "candidate_evidence": candidate_evidence,
             "candidate_evidence_raw": candidate_evidence_raw,
             "fact_selection": {
-                "method": "qafs" if self.use_qafs else "none",
+                "method": "qvfs" if self.use_qvfs else "none",
                 "evidence_top_k": self.evidence_top_k,
                 "top_m": self.fact_top_m,
                 "alpha": self.fact_alpha,
