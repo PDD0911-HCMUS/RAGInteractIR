@@ -144,6 +144,107 @@ def safe_log_filename(value: Any) -> str:
     return text or "unknown"
 
 
+def dedupe_texts(values: List[Any], limit: Optional[int] = None) -> List[str]:
+    cleaned = []
+    seen = set()
+    for value in values:
+        text = str(value or "").strip()
+        text = " ".join(text.split()).strip(" ;,.")
+        key = text.lower()
+        if text and key not in seen:
+            cleaned.append(text)
+            seen.add(key)
+        if limit is not None and len(cleaned) >= limit:
+            break
+    return cleaned
+
+
+def parse_query_constraints_for_state(query: str) -> Dict[str, List[str]]:
+    text = str(query or "").strip()
+    negative = []
+    for token in text.split():
+        if token.startswith("-") and len(token) > 1:
+            negative.append(token[1:].replace("_", " ").replace("-", " "))
+
+    positive_text = " ".join(token for token in text.split() if not token.startswith("-"))
+    return {
+        "positive_constraints": dedupe_texts([positive_text], limit=8),
+        "negative_constraints": dedupe_texts(negative, limit=8),
+    }
+
+
+def initialize_interaction_state(initial_query: str) -> Dict[str, Any]:
+    constraints = parse_query_constraints_for_state(initial_query)
+    return {
+        "main_intent": constraints["positive_constraints"][0] if constraints["positive_constraints"] else initial_query,
+        "positive_constraints": constraints["positive_constraints"],
+        "negative_constraints": constraints["negative_constraints"],
+        "rejected_constraints": [],
+        "uncertain_constraints": [],
+    }
+
+
+def update_interaction_state(
+    state: Dict[str, Any],
+    user_simulation: Dict[str, Any],
+    fallback_query: str,
+) -> Dict[str, Any]:
+    next_state = {
+        "main_intent": state.get("main_intent") or fallback_query,
+        "positive_constraints": list(state.get("positive_constraints") or []),
+        "negative_constraints": list(state.get("negative_constraints") or []),
+        "rejected_constraints": list(state.get("rejected_constraints") or []),
+        "uncertain_constraints": list(state.get("uncertain_constraints") or []),
+    }
+
+    action = user_simulation.get("action")
+    if action == "reject":
+        return next_state
+
+    kept = dedupe_texts(user_simulation.get("kept_constraints") or [], limit=16)
+    added = dedupe_texts(
+        (user_simulation.get("added_constraints") or [])
+        + (user_simulation.get("added_target_details") or []),
+        limit=16,
+    )
+    removed = {item.lower() for item in dedupe_texts(user_simulation.get("removed_details") or [])}
+    rejected = dedupe_texts(user_simulation.get("rejected_constraints") or [], limit=16)
+    negative = dedupe_texts(user_simulation.get("negative_constraints") or [], limit=16)
+
+    if kept:
+        positive = kept + added
+    else:
+        positive = next_state["positive_constraints"] + added
+
+    positive = [item for item in positive if item.lower() not in removed]
+    positive = [item for item in positive if item.lower() not in {r.lower() for r in rejected}]
+
+    next_state["positive_constraints"] = dedupe_texts(positive, limit=12)
+    next_state["negative_constraints"] = dedupe_texts(
+        next_state["negative_constraints"] + negative,
+        limit=10,
+    )
+    next_state["rejected_constraints"] = dedupe_texts(
+        next_state["rejected_constraints"] + rejected + list(removed),
+        limit=16,
+    )
+    if next_state["positive_constraints"]:
+        next_state["main_intent"] = next_state["positive_constraints"][0]
+    return next_state
+
+
+def compose_query_from_interaction_state(state: Dict[str, Any], fallback_query: str) -> str:
+    positives = dedupe_texts(state.get("positive_constraints") or [], limit=8)
+    negatives = dedupe_texts(state.get("negative_constraints") or [], limit=4)
+    if not positives:
+        positives = dedupe_texts([fallback_query], limit=1)
+
+    query = ", ".join(positives)
+    if negatives:
+        query = f"{query} " + " ".join(f"-{item.replace(' ', '_')}" for item in negatives)
+    return query.strip()
+
+
 def write_sample_conversation_log(
     log_dir: Optional[Path],
     result: Dict[str, Any],
@@ -171,15 +272,78 @@ def write_sample_conversation_log(
     }
 
     for method, method_result in (result.get("methods") or {}).items():
+        turns = method_result.get("turns", [])
         payload["methods"][method] = {
             "initial_query": method_result.get("initial_query"),
             "final_query": method_result.get("final_query"),
             "final": method_result.get("final"),
-            "turns": method_result.get("turns", []),
+            "conversation": build_conversation_transcript(turns),
+            "turns": turns,
         }
 
     with output_path.open("w", encoding="utf-8") as f:
         json.dump(payload, f, ensure_ascii=False, indent=2)
+
+
+def build_conversation_transcript(turns: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    transcript: List[Dict[str, Any]] = []
+    for item in turns:
+        turn_id = item.get("turn")
+        if turn_id == 0:
+            transcript.append(
+                {
+                    "turn": turn_id,
+                    "phase": "initial_retrieval",
+                    "query": item.get("query"),
+                    "interaction_state": item.get("interaction_state"),
+                    "rank": item.get("rank"),
+                    "mrr": item.get("mrr"),
+                    "top_ids": item.get("top_ids", []),
+                    "top_captions": item.get("top_captions", []),
+                }
+            )
+            continue
+
+        transcript.append(
+            {
+                "turn": turn_id,
+                "phase": "interaction",
+                "system": {
+                    "previous_query": item.get("previous_query"),
+                    "interaction_state_before": item.get("interaction_state_before"),
+                    "diagnosis": item.get("diagnosis", {}),
+                    "suggestions": [
+                        {
+                            "sug": suggestion.get("sug"),
+                            "type": suggestion.get("type"),
+                            "explain": suggestion.get("explain"),
+                            "oracle_overlap": suggestion.get("oracle_overlap"),
+                            "oracle_novel_overlap": suggestion.get("oracle_novel_overlap"),
+                        }
+                        for suggestion in item.get("suggestions", [])
+                    ],
+                    "candidate_evidence_top_ids": item.get("candidate_evidence_top_ids"),
+                },
+                "user": {
+                    "action": item.get("interaction_action"),
+                    "simulation": item.get("user_simulation"),
+                    "interaction_state_after": item.get("interaction_state_after"),
+                    "next_query": item.get("query"),
+                },
+                "retrieval_result": {
+                    "rank_change": item.get("rank_change"),
+                    "rank": item.get("rank"),
+                    "mrr": item.get("mrr"),
+                    "hit@1": item.get("hit@1"),
+                    "hit@5": item.get("hit@5"),
+                    "hit@10": item.get("hit@10"),
+                    "hit@20": item.get("hit@20"),
+                    "top_ids": item.get("top_ids", []),
+                    "top_captions": item.get("top_captions", []),
+                },
+            }
+        )
+    return transcript
 
 
 async def run_method_turns(
@@ -203,6 +367,11 @@ async def run_method_turns(
     selection_policy: str,
 ) -> Dict[str, Any]:
     current_query = initial_query
+    interaction_state = (
+        initialize_interaction_state(initial_query)
+        if selection_policy == "llm_user_sim"
+        else None
+    )
     current_ids, current_captions, current_scores = service.faiss_search(
         query_text=current_query,
         gallery=gallery,
@@ -214,6 +383,7 @@ async def run_method_turns(
             "turn": 0,
             "query": current_query,
             "rank_change": "initial",
+            "interaction_state": interaction_state,
             **metrics_from_rank(current_rank, ks),
             "top_ids": current_ids[: max(ks)],
             "top_scores": current_scores[: max(ks)],
@@ -258,19 +428,38 @@ async def run_method_turns(
                 suggestions=suggestions,
                 candidate_evidence=evidence,
                 turn_id=turn_id,
+                interaction_state=interaction_state,
             )
             interaction_action = user_simulation.get("action", "reject")
-            next_query = user_simulation.get("refined_query") or current_query
+            if interaction_action == "reject":
+                next_query = current_query
+                next_interaction_state = interaction_state
+            else:
+                next_interaction_state = update_interaction_state(
+                    state=interaction_state or initialize_interaction_state(current_query),
+                    user_simulation=user_simulation,
+                    fallback_query=current_query,
+                )
+                next_query = compose_query_from_interaction_state(
+                    state=next_interaction_state,
+                    fallback_query=user_simulation.get("refined_query") or current_query,
+                )
             selected = {
                 "user_action": interaction_action,
                 "selected_suggestions": user_simulation.get("selected_suggestions", []),
+                "kept_constraints": user_simulation.get("kept_constraints", []),
+                "added_constraints": user_simulation.get("added_constraints", []),
+                "negative_constraints": user_simulation.get("negative_constraints", []),
+                "rejected_constraints": user_simulation.get("rejected_constraints", []),
                 "added_target_details": user_simulation.get("added_target_details", []),
                 "removed_details": user_simulation.get("removed_details", []),
                 "reason": user_simulation.get("reason", ""),
             }
             if interaction_action == "reject" or next_query == current_query:
                 interaction_action = "no_op"
+                next_interaction_state = interaction_state
         else:
+            next_interaction_state = interaction_state
             selected = choose_oracle_suggestion(
                 suggestions,
                 sample,
@@ -309,6 +498,8 @@ async def run_method_turns(
             "interaction_action": interaction_action,
             "compose_latency_ms": compose_latency_ms,
             "query_refinement_policy": selection_policy if interaction_action != "no_op" else "no_op",
+            "interaction_state_before": interaction_state,
+            "interaction_state_after": next_interaction_state,
             "selected_suggestion": selected,
             "user_simulation": user_simulation,
             "suggestions": suggestions,
@@ -324,6 +515,7 @@ async def run_method_turns(
         turn_records.append(strip_evidence_if_needed(turn_record, save_evidence))
 
         current_query = next_query
+        interaction_state = next_interaction_state
         current_ids = next_ids
         current_captions = next_captions
         current_scores = next_scores

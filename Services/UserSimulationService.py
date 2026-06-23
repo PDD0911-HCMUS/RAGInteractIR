@@ -114,6 +114,69 @@ class UserSimulationService:
         query = query.strip(" ;,.")
         return query
 
+    @classmethod
+    def _clean_list(cls, values: Any, limit: int = 12) -> List[str]:
+        if not isinstance(values, list):
+            return []
+        cleaned: List[str] = []
+        seen = set()
+        for value in values:
+            text = cls._sanitize_query(str(value or ""))
+            key = text.lower()
+            if text and key not in seen:
+                cleaned.append(text)
+                seen.add(key)
+            if len(cleaned) >= limit:
+                break
+        return cleaned
+
+    @staticmethod
+    def _extract_query_constraints(query: str) -> Dict[str, List[str]]:
+        """
+        Lightweight query parsing for the simulator prompt. This is not used as
+        a hard rule; it gives the LLM explicit polarity hints so terms such as
+        "-drawing" or "not indoor" are treated as exclusions.
+        """
+        text = str(query or "").strip()
+        negative: List[str] = []
+
+        for match in re.finditer(r"(?<!\w)-([A-Za-z][A-Za-z0-9_-]*)", text):
+            negative.append(match.group(1).replace("_", " ").replace("-", " ").strip())
+
+        for match in re.finditer(
+            r"\b(?:not|no|without|exclude|excluding)\s+([A-Za-z][A-Za-z0-9_-]*(?:\s+[A-Za-z][A-Za-z0-9_-]*){0,2})",
+            text,
+            flags=re.IGNORECASE,
+        ):
+            negative.append(match.group(1).strip(" ,.;:"))
+
+        positive_text = re.sub(r"(?<!\w)-[A-Za-z][A-Za-z0-9_-]*", " ", text)
+        positive_text = re.sub(
+            r"\b(?:not|no|without|exclude|excluding)\s+[A-Za-z][A-Za-z0-9_-]*(?:\s+[A-Za-z][A-Za-z0-9_-]*){0,2}",
+            " ",
+            positive_text,
+            flags=re.IGNORECASE,
+        )
+        positive = [
+            chunk.strip(" ,.;:")
+            for chunk in re.split(r"\s*[;,]\s*", positive_text)
+            if chunk.strip(" ,.;:")
+        ]
+
+        deduped_negative = []
+        seen = set()
+        for item in negative:
+            key = item.lower()
+            if item and key not in seen:
+                seen.add(key)
+                deduped_negative.append(item)
+
+        return {
+            "positive_text": positive[:6],
+            "negative_text": deduped_negative[:8],
+            "note": "Negative constraints are exclusions/absence, not positive visual details.",
+        }
+
     def _build_context(
         self,
         sample: Dict[str, Any],
@@ -121,10 +184,13 @@ class UserSimulationService:
         suggestions: List[Dict[str, Any]],
         candidate_evidence: List[Dict[str, Any]],
         turn_id: int,
+        interaction_state: Optional[Dict[str, Any]] = None,
     ) -> Dict[str, Any]:
         return {
             "turn": turn_id,
             "current_query": current_query,
+            "current_query_constraints": self._extract_query_constraints(current_query),
+            "interaction_state": interaction_state or {},
             "target": {
                 "image_id": sample.get("image_id"),
                 "image_path": sample.get("image_path"),
@@ -153,6 +219,7 @@ class UserSimulationService:
         suggestions: List[Dict[str, Any]],
         candidate_evidence: List[Dict[str, Any]],
         turn_id: int,
+        interaction_state: Optional[Dict[str, Any]] = None,
     ) -> Tuple[Dict[str, Any], int]:
         context = self._build_context(
             sample=sample,
@@ -160,6 +227,7 @@ class UserSimulationService:
             suggestions=suggestions,
             candidate_evidence=candidate_evidence,
             turn_id=turn_id,
+            interaction_state=interaction_state,
         )
         prompt = self.prompt.simulate_user_edit.format(context=self._compact_json(context))
 
@@ -180,13 +248,16 @@ class UserSimulationService:
 
         action = self._normalize_action(data.get("action", "reject"))
         refined_query = self._sanitize_query(data.get("refined_query", ""))
-        if action == "reject" or not refined_query:
-            action = "reject"
+        if action == "reject":
             refined_query = current_query
 
         result = {
             "action": action,
             "selected_suggestions": data.get("selected_suggestions") or [],
+            "kept_constraints": self._clean_list(data.get("kept_constraints") or [], limit=16),
+            "added_constraints": self._clean_list(data.get("added_constraints") or [], limit=12),
+            "negative_constraints": self._clean_list(data.get("negative_constraints") or [], limit=12),
+            "rejected_constraints": self._clean_list(data.get("rejected_constraints") or [], limit=12),
             "added_target_details": data.get("added_target_details") or [],
             "removed_details": data.get("removed_details") or [],
             "refined_query": refined_query,
