@@ -598,6 +598,40 @@ class VisDialGPTCLIPService:
 
         return refined_query, latency_ms
 
+    async def compose_query_from_state(
+        self,
+        interaction_state: Any,
+        fallback_query: str,
+    ) -> Tuple[str, int]:
+        """
+        Rewrite validated visual constraint memory into a concise retrieval
+        query. This keeps multi-turn state compact before the next retrieval.
+        """
+        state_json = self._compact_json(interaction_state)
+        prompt = self.prompt.compose_state_query.format(state=state_json)
+
+        start = time.time()
+        answer = self._get_openai_service().generate_answer(
+            user_prompt=prompt,
+            history=None,
+            model=self.reasoning_model,
+            max_output_tokens=self.rewrite_max_output_tokens,
+            store=False,
+        )
+        latency_ms = int((time.time() - start) * 1000)
+
+        try:
+            data = self._safe_json_loads(answer)
+            rewritten_query = str(data.get("rewritten_query", "")).strip()
+        except Exception:
+            logger.warning("State query composer returned invalid JSON: %s", answer)
+            rewritten_query = ""
+
+        if not rewritten_query:
+            return fallback_query, latency_ms
+
+        return rewritten_query, latency_ms
+
     async def RAG_faiss_retrieval(self, history, gallery, text):
         """
         1. Retrieve by FAISS

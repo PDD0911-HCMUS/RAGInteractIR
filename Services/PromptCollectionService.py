@@ -56,6 +56,16 @@ class PromptCollectionService:
             "JSON:{{\"refined_query\":\"...\"}}"
         )
 
+        self.compose_state_query = (
+            "Compose one concise image-search query from a validated visual constraint memory. "
+            "Preserve the main intent and the most useful positive constraints. Preserve negative "
+            "constraints as exclusion terms using concise wording such as '-cartoon' when appropriate. "
+            "Do not add new facts, do not explain, and do not mention memory/state/constraints. "
+            "Keep the query short and CLIP-friendly, usually under 18 words. Return JSON only.\n"
+            "State:{state}\n"
+            "JSON:{{\"rewritten_query\":\"...\"}}"
+        )
+
         self.simulate_user_edit = (
             "Simulate a target-aware user in an interactive image retrieval session. "
             "The user knows the target image facts, sees the system suggestions and retrieved evidence, "

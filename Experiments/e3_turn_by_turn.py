@@ -3,6 +3,7 @@ import asyncio
 import json
 import logging
 import os
+import re
 import sys
 from pathlib import Path
 from typing import Any, Dict, List, Optional
@@ -159,6 +160,88 @@ def dedupe_texts(values: List[Any], limit: Optional[int] = None) -> List[str]:
     return cleaned
 
 
+def normalize_constraint_key(value: Any) -> str:
+    text = str(value or "").lower().strip()
+    text = text.replace("_", " ").replace("-", " ")
+    text = " ".join(text.split())
+    text = text.strip(" ;,.")
+    text = re.sub(r"^(?:not|no|without|exclude|excluding)\s+", "", text)
+    return text
+
+
+def normalize_negative_constraint(value: Any) -> str:
+    text = str(value or "").strip()
+    text = text.replace("_", " ").replace("-", " ")
+    text = " ".join(text.split())
+    text = text.strip(" ;,.")
+    text = re.sub(
+        r"^(?:not|no|without|exclude|excluding)\s+",
+        "",
+        text,
+        flags=re.IGNORECASE,
+    )
+    return text
+
+
+def extract_negative_constraints(values: List[Any]) -> List[str]:
+    negatives = []
+    for value in values:
+        text = str(value or "").strip()
+        if not text:
+            continue
+        for token in text.split():
+            if token.startswith("-") and len(token) > 1:
+                negatives.append(token[1:].replace("_", " ").replace("-", " "))
+        if re.match(r"^(?:not|no|without|exclude|excluding)\s+", text, flags=re.IGNORECASE):
+            negatives.append(normalize_negative_constraint(text))
+    return dedupe_texts(negatives)
+
+
+def validate_interaction_state(state: Dict[str, Any]) -> Dict[str, Any]:
+    """
+    Keep the visual constraint memory internally consistent. The simulator may
+    behave like a real user and produce inconsistent feedback; RAIR-VF should
+    preserve useful memory without letting contradictions enter the next query.
+    """
+    positive_raw = dedupe_texts(state.get("positive_constraints") or [], limit=16)
+    negative_raw = dedupe_texts(
+        (state.get("negative_constraints") or [])
+        + extract_negative_constraints(positive_raw)
+        + extract_negative_constraints(state.get("rejected_constraints") or []),
+        limit=16,
+    )
+    rejected_raw = dedupe_texts(state.get("rejected_constraints") or [], limit=16)
+
+    negative = dedupe_texts(
+        [normalize_negative_constraint(item) for item in negative_raw],
+        limit=10,
+    )
+    negative_keys = {normalize_constraint_key(item) for item in negative}
+    rejected_keys = {normalize_constraint_key(item) for item in rejected_raw}
+
+    positive = []
+    for item in positive_raw:
+        key = normalize_constraint_key(item)
+        if not key:
+            continue
+        if key in negative_keys or key in rejected_keys:
+            continue
+        if re.match(r"^(?:not|no|without|exclude|excluding)\s+", item, flags=re.IGNORECASE):
+            continue
+        if any(token.startswith("-") and len(token) > 1 for token in item.split()):
+            continue
+        positive.append(item)
+
+    positive = dedupe_texts(positive, limit=8)
+    return {
+        "main_intent": positive[0] if positive else state.get("main_intent", ""),
+        "positive_constraints": positive,
+        "negative_constraints": negative,
+        "rejected_constraints": dedupe_texts(rejected_raw, limit=16),
+        "uncertain_constraints": dedupe_texts(state.get("uncertain_constraints") or [], limit=8),
+    }
+
+
 def parse_query_constraints_for_state(query: str) -> Dict[str, List[str]]:
     text = str(query or "").strip()
     negative = []
@@ -175,13 +258,13 @@ def parse_query_constraints_for_state(query: str) -> Dict[str, List[str]]:
 
 def initialize_interaction_state(initial_query: str) -> Dict[str, Any]:
     constraints = parse_query_constraints_for_state(initial_query)
-    return {
+    return validate_interaction_state({
         "main_intent": constraints["positive_constraints"][0] if constraints["positive_constraints"] else initial_query,
         "positive_constraints": constraints["positive_constraints"],
         "negative_constraints": constraints["negative_constraints"],
         "rejected_constraints": [],
         "uncertain_constraints": [],
-    }
+    })
 
 
 def update_interaction_state(
@@ -230,7 +313,7 @@ def update_interaction_state(
     )
     if next_state["positive_constraints"]:
         next_state["main_intent"] = next_state["positive_constraints"][0]
-    return next_state
+    return validate_interaction_state(next_state)
 
 
 def compose_query_from_interaction_state(state: Dict[str, Any], fallback_query: str) -> str:
@@ -328,7 +411,9 @@ def build_conversation_transcript(turns: List[Dict[str, Any]]) -> List[Dict[str,
                     "action": item.get("interaction_action"),
                     "simulation": item.get("user_simulation"),
                     "interaction_state_after": item.get("interaction_state_after"),
+                    "rule_based_query": item.get("rule_based_query"),
                     "next_query": item.get("query"),
+                    "state_composer_latency_ms": item.get("state_composer_latency_ms"),
                 },
                 "retrieval_result": {
                     "rank_change": item.get("rank_change"),
@@ -419,6 +504,8 @@ async def run_method_turns(
 
         user_simulation = None
         selected = None
+        state_composer_latency_ms = 0
+        rule_based_query = None
         if selection_policy == "llm_user_sim":
             if user_simulator is None:
                 raise ValueError("llm_user_sim requires a UserSimulationService instance")
@@ -440,10 +527,15 @@ async def run_method_turns(
                     user_simulation=user_simulation,
                     fallback_query=current_query,
                 )
-                next_query = compose_query_from_interaction_state(
+                rule_based_query = compose_query_from_interaction_state(
                     state=next_interaction_state,
                     fallback_query=user_simulation.get("refined_query") or current_query,
                 )
+                next_query, state_composer_latency_ms = await service.compose_query_from_state(
+                    interaction_state=next_interaction_state,
+                    fallback_query=rule_based_query,
+                )
+                compose_latency_ms += state_composer_latency_ms
             selected = {
                 "user_action": interaction_action,
                 "selected_suggestions": user_simulation.get("selected_suggestions", []),
@@ -497,6 +589,8 @@ async def run_method_turns(
             "query": next_query,
             "interaction_action": interaction_action,
             "compose_latency_ms": compose_latency_ms,
+            "state_composer_latency_ms": state_composer_latency_ms,
+            "rule_based_query": rule_based_query,
             "query_refinement_policy": selection_policy if interaction_action != "no_op" else "no_op",
             "interaction_state_before": interaction_state,
             "interaction_state_after": next_interaction_state,
