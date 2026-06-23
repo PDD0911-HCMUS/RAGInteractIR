@@ -317,7 +317,7 @@ def update_interaction_state(
 
 
 def compose_query_from_interaction_state(state: Dict[str, Any], fallback_query: str) -> str:
-    positives = dedupe_texts(state.get("positive_constraints") or [], limit=8)
+    positives = dedupe_texts(state.get("positive_constraints") or [], limit=4)
     negatives = dedupe_texts(state.get("negative_constraints") or [], limit=4)
     if not positives:
         positives = dedupe_texts([fallback_query], limit=1)

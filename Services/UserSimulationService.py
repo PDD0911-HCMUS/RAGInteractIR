@@ -186,17 +186,30 @@ class UserSimulationService:
         turn_id: int,
         interaction_state: Optional[Dict[str, Any]] = None,
     ) -> Dict[str, Any]:
+        state = interaction_state or {}
+        active_text = " ".join(
+            [
+                current_query,
+                " ".join(state.get("positive_constraints") or []),
+                " ".join(state.get("negative_constraints") or []),
+            ]
+        ).lower()
+        target_positive = self._fact_list(sample, "positive_facts")[:12]
+        missing_target_facts = [
+            fact for fact in target_positive if fact.lower() not in active_text
+        ][:6]
         return {
             "turn": turn_id,
             "current_query": current_query,
             "current_query_constraints": self._extract_query_constraints(current_query),
-            "interaction_state": interaction_state or {},
+            "interaction_state": state,
+            "missing_target_facts": missing_target_facts,
             "target": {
                 "image_id": sample.get("image_id"),
                 "image_path": sample.get("image_path"),
                 "caption": sample.get("base_caption", ""),
                 "visual_facts": self._fact_list(sample, "visual_facts")[:12],
-                "positive_facts": self._fact_list(sample, "positive_facts")[:12],
+                "positive_facts": target_positive,
                 "negative_facts": self._fact_list(sample, "negative_facts")[:8],
                 "uncertain_facts": self._fact_list(sample, "uncertain_facts")[:8],
             },
