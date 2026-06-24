@@ -245,9 +245,19 @@ def validate_interaction_state(state: Dict[str, Any]) -> Dict[str, Any]:
 def parse_query_constraints_for_state(query: str) -> Dict[str, List[str]]:
     text = str(query or "").strip()
     negative = []
+    generic_negative_stoplist = {
+        "cartoon",
+        "drawing",
+        "illustration",
+        "painting",
+        "photo",
+        "digital",
+    }
     for token in text.split():
         if token.startswith("-") and len(token) > 1:
-            negative.append(token[1:].replace("_", " ").replace("-", " "))
+            item = token[1:].replace("_", " ").replace("-", " ")
+            if normalize_constraint_key(item) not in generic_negative_stoplist:
+                negative.append(item)
 
     positive_text = " ".join(token for token in text.split() if not token.startswith("-"))
     return {
