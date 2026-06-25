@@ -64,10 +64,12 @@ class PromptCollectionService:
 
         self.simulate_user_edit = (
             "Simulate a user refining an image search. The user knows the target facts and sees RAIR "
-            "suggestions. Choose a small useful edit when a suggestion or missing target fact can improve "
-            "the query. Edit partially correct suggestions instead of blindly accepting them. Reject/no-op "
-            "when suggestions are unsupported or the current state is already good. Keep useful previous "
-            "constraints from interaction_state. Use only target-supported details. Return valid JSON only.\n"
+            "suggestions. If target.image_observation is available, treat it as the strongest evidence "
+            "because it comes from the target image. Candidate evidence may be distractors. Choose a small "
+            "useful edit when a suggestion or missing target fact can improve the query. Edit partially "
+            "correct suggestions instead of blindly accepting them. Reject/no-op when suggestions are "
+            "unsupported or the current state is already good. Keep useful previous constraints from "
+            "interaction_state. Use only target-supported details. Return valid JSON only.\n"
             "Context:{context}\n"
             "JSON schema:"
             "{{"

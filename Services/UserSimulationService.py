@@ -194,9 +194,15 @@ class UserSimulationService:
                 " ".join(state.get("negative_constraints") or []),
             ]
         ).lower()
+        target_observation = sample.get("target_observation") or {}
+        observed_facts = self._clean_list(
+            target_observation.get("visual_facts") or [],
+            limit=12,
+        )
         target_positive = self._fact_list(sample, "positive_facts")[:12]
+        hybrid_positive = self._clean_list(observed_facts + target_positive, limit=16)
         missing_target_facts = [
-            fact for fact in target_positive if fact.lower() not in active_text
+            fact for fact in hybrid_positive if fact.lower() not in active_text
         ][:6]
         return {
             "turn": turn_id,
@@ -208,8 +214,17 @@ class UserSimulationService:
                 "image_id": sample.get("image_id"),
                 "image_path": sample.get("image_path"),
                 "caption": sample.get("base_caption", ""),
+                "image_observation": {
+                    "caption": target_observation.get("caption", ""),
+                    "visual_facts": observed_facts,
+                    "uncertain_facts": self._clean_list(
+                        target_observation.get("uncertain_facts") or [],
+                        limit=8,
+                    ),
+                },
                 "visual_facts": self._fact_list(sample, "visual_facts")[:12],
-                "positive_facts": target_positive,
+                "positive_facts": hybrid_positive,
+                "annotation_positive_facts": target_positive,
                 "negative_facts": self._fact_list(sample, "negative_facts")[:8],
                 "uncertain_facts": self._fact_list(sample, "uncertain_facts")[:8],
             },

@@ -29,7 +29,9 @@ from Experiments.e3_turn_by_turn import (
 )
 from Services.LocalLLMService import LocalLLMService
 from Services.OpenAIService import OpenAIService
+from Services.TargetObservationService import TargetObservationService
 from Services.UserSimulationService import UserSimulationService
+from Services.VLMUserSimulationService import VLMUserSimulationService
 from Services.VisDialGPTCLIPService import VisDialGPTCLIPService
 
 
@@ -49,6 +51,7 @@ class SimulateIInteractService:
         self,
         service: VisDialGPTCLIPService,
         user_simulator: UserSimulationService,
+        target_observer: Optional[TargetObservationService] = None,
         split: str = "train",
         evidence_top_k: int = 10,
         fact_top_m: int = 4,
@@ -56,6 +59,7 @@ class SimulateIInteractService:
     ) -> None:
         self.service = service
         self.user_simulator = user_simulator
+        self.target_observer = target_observer
         self.split = split
         self.evidence_top_k = evidence_top_k
         self.fact_top_m = fact_top_m
@@ -141,6 +145,17 @@ class SimulateIInteractService:
         print(f"image_path:   {sample.get('image_path')}")
         print(f"caption:      {sample.get('base_caption')}")
         self._print_list("target visual facts", sample.get("visual_facts") or [], limit=10)
+        observation = sample.get("target_observation") or {}
+        if observation:
+            if observation.get("error"):
+                print(f"target image observation: {observation.get('error')}")
+            else:
+                print(f"image observation caption: {observation.get('caption')}")
+                self._print_list(
+                    "image observation facts",
+                    observation.get("visual_facts") or [],
+                    limit=10,
+                )
 
     def _print_retrieval(self, rank: Optional[int], image_ids: List[Any], captions: List[str]) -> None:
         print(f"\nRAIR RETRIEVAL: target_rank={rank if rank is not None else 'not found'}")
@@ -163,6 +178,8 @@ class SimulateIInteractService:
         stop_on_hit_k: Optional[int] = None,
     ) -> None:
         sample = self.load_target(image_id=image_id, dialog_index=dialog_index)
+        if self.target_observer is not None:
+            sample["target_observation"] = self.target_observer.observe(sample)
         self._print_target(sample)
 
         print("\nUSER: I want to find this target image.")
@@ -307,9 +324,21 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--local-llm-dtype", default=os.environ.get("LOCAL_LLM_DTYPE", "bfloat16"))
     parser.add_argument("--local-llm-max-new-tokens", type=int, default=768)
     parser.add_argument("--local-llm-online", action="store_true")
+    parser.add_argument("--user-sim-provider", choices=["text", "vlm"], default="text")
     parser.add_argument("--user-sim-model", default=None)
     parser.add_argument("--user-sim-max-output-tokens", type=int, default=512)
     parser.add_argument("--user-sim-temperature", type=float, default=0.0)
+    parser.add_argument("--user-sim-vlm-model", default=os.environ.get("RAIR_USER_SIM_VLM_MODEL", "Qwen/Qwen2.5-VL-7B-Instruct"))
+    parser.add_argument("--user-sim-vlm-device", default=os.environ.get("RAIR_USER_SIM_VLM_DEVICE", "cuda"))
+    parser.add_argument("--user-sim-vlm-dtype", default=os.environ.get("RAIR_USER_SIM_VLM_DTYPE", "bfloat16"))
+    parser.add_argument("--user-sim-vlm-online", action="store_true")
+    parser.add_argument("--target-observation-provider", choices=["none", "openai", "local"], default="none")
+    parser.add_argument("--target-observation-model", default=os.environ.get("RAIR_TARGET_OBSERVATION_MODEL"))
+    parser.add_argument("--target-observation-image-root", default=os.environ.get("RAIR_IMAGE_ROOT"))
+    parser.add_argument("--target-observation-max-output-tokens", type=int, default=512)
+    parser.add_argument("--target-observation-device", default=os.environ.get("RAIR_TARGET_OBSERVATION_DEVICE", "cuda"))
+    parser.add_argument("--target-observation-dtype", default=os.environ.get("RAIR_TARGET_OBSERVATION_DTYPE", "bfloat16"))
+    parser.add_argument("--target-observation-online", action="store_true")
     parser.add_argument("--log-level", default="WARNING")
     return parser.parse_args()
 
@@ -324,15 +353,50 @@ async def main_async(args: argparse.Namespace) -> None:
         evidence_top_k=args.evidence_top_k,
         fact_top_m=args.fact_top_m,
     )
-    simulator = UserSimulationService(
-        llm_service=llm_service,
-        model_name=args.user_sim_model,
-        max_output_tokens=args.user_sim_max_output_tokens,
-        temperature=args.user_sim_temperature,
-    )
+    if args.user_sim_provider == "vlm":
+        user_sim_vlm = TargetObservationService(
+            provider="local",
+            model_name=args.user_sim_vlm_model,
+            image_root=args.target_observation_image_root,
+            max_output_tokens=args.user_sim_max_output_tokens,
+            device=args.user_sim_vlm_device,
+            dtype=args.user_sim_vlm_dtype,
+            local_files_only=not args.user_sim_vlm_online,
+        )
+        simulator = VLMUserSimulationService(
+            target_vlm=user_sim_vlm,
+            max_output_tokens=args.user_sim_max_output_tokens,
+            temperature=args.user_sim_temperature,
+        )
+    else:
+        simulator = UserSimulationService(
+            llm_service=llm_service,
+            model_name=args.user_sim_model,
+            max_output_tokens=args.user_sim_max_output_tokens,
+            temperature=args.user_sim_temperature,
+        )
+    target_observer = None
+    if args.target_observation_provider != "none":
+        observation_model = args.target_observation_model
+        if not observation_model:
+            observation_model = (
+                args.local_llm_model
+                if args.target_observation_provider == "local"
+                else args.reasoning_model
+            )
+        target_observer = TargetObservationService(
+            provider=args.target_observation_provider,
+            model_name=observation_model,
+            image_root=args.target_observation_image_root,
+            max_output_tokens=args.target_observation_max_output_tokens,
+            device=args.target_observation_device,
+            dtype=args.target_observation_dtype,
+            local_files_only=not args.target_observation_online,
+        )
     runner = SimulateIInteractService(
         service=service,
         user_simulator=simulator,
+        target_observer=target_observer,
         split=args.split,
         evidence_top_k=args.evidence_top_k,
         fact_top_m=args.fact_top_m,
