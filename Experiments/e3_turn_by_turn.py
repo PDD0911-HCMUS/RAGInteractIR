@@ -83,6 +83,16 @@ def load_e3_samples(args: argparse.Namespace) -> tuple[List[Dict[str, Any]], Opt
     )
 
 
+def build_rewrite_context_from_query(query: str) -> Dict[str, Any]:
+    query = str(query or "").strip()
+    return {
+        "initial_query": query,
+        "feedback_pairs": [],
+        "pending_suggestions": [],
+        "latest_user_message": query,
+    }
+
+
 def build_evidence(
     service: Any,
     method: str,
@@ -360,6 +370,9 @@ def write_sample_conversation_log(
         "dialog_index": result.get("dialog_index"),
         "scenario_sample_id": result.get("scenario_sample_id"),
         "base_caption": result.get("base_caption"),
+        "raw_initial_query": result.get("raw_initial_query"),
+        "initial_query_source": result.get("initial_query_source"),
+        "initial_query_latency_ms": result.get("initial_query_latency_ms"),
         "target_observation": result.get("target_observation"),
         "rewritten_query": result.get("rewritten_query"),
         "methods": {},
@@ -697,8 +710,20 @@ async def evaluate_sample(
     save_evidence: bool,
     selection_policy: str,
     stop_on_hit_k: Optional[int],
+    initial_query_source: str,
 ) -> Dict[str, Any]:
-    rewritten_query, _ = await service.rewrite_query(build_rewrite_context(sample))
+    raw_initial_query = str(sample.get("base_caption") or "").strip()
+    if initial_query_source == "auto":
+        initial_query_source = (
+            "vlm_user" if hasattr(user_simulator, "generate_initial_query") else "base_caption"
+        )
+    initial_query_latency_ms = 0
+    if initial_query_source == "vlm_user":
+        if user_simulator is None or not hasattr(user_simulator, "generate_initial_query"):
+            raise ValueError("initial_query_source=vlm_user requires a VLM user simulator")
+        raw_initial_query, initial_query_latency_ms = await user_simulator.generate_initial_query(sample)
+
+    rewritten_query, _ = await service.rewrite_query(build_rewrite_context_from_query(raw_initial_query))
 
     method_results = {}
     for method in methods:
@@ -731,6 +756,9 @@ async def evaluate_sample(
         "image_path": sample.get("image_path"),
         "scenario_sample_id": sample.get("scenario_sample_id"),
         "base_caption": sample.get("base_caption"),
+        "raw_initial_query": raw_initial_query,
+        "initial_query_source": initial_query_source,
+        "initial_query_latency_ms": initial_query_latency_ms,
         "target_observation": sample.get("target_observation"),
         "rewritten_query": rewritten_query,
         "methods": method_results,
@@ -920,6 +948,7 @@ async def main_async(args: argparse.Namespace) -> None:
                 save_evidence=args.save_evidence,
                 selection_policy=args.selection_policy,
                 stop_on_hit_k=args.stop_on_hit_k,
+                initial_query_source=args.initial_query_source,
             )
         except Exception:
             if not args.continue_on_error:
@@ -983,6 +1012,7 @@ async def main_async(args: argparse.Namespace) -> None:
             "gallery_overlap": overlap,
             "interaction_policy": args.selection_policy,
             "stop_on_hit_k": args.stop_on_hit_k,
+            "initial_query_source": args.initial_query_source,
             "conversation_log_dir": str(args.conversation_log_dir) if args.conversation_log_dir else None,
         },
         "summary": summarize_e3(results, methods, ks, args.turns),
@@ -1006,6 +1036,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--limit", type=int, default=20)
     parser.add_argument("--offset", type=int, default=0)
     parser.add_argument("--turns", type=int, default=3)
+    parser.add_argument("--initial-query-source", choices=["auto", "base_caption", "vlm_user"], default="auto")
     parser.add_argument("--k", type=int, nargs="+", default=[1, 5, 10, 20])
     parser.add_argument("--search-depth", type=int, default=100)
     parser.add_argument("--evidence-top-k", type=int, default=3)

@@ -38,6 +38,16 @@ from Services.VisDialGPTCLIPService import VisDialGPTCLIPService
 logger = logging.getLogger("rair.simulate_interact")
 
 
+def build_rewrite_context_from_query(query: str) -> Dict[str, Any]:
+    query = str(query or "").strip()
+    return {
+        "initial_query": query,
+        "feedback_pairs": [],
+        "pending_suggestions": [],
+        "latest_user_message": query,
+    }
+
+
 class SimulateIInteractService:
     """
     Terminal-only simulator for inspecting one RAIR-VF interaction session.
@@ -176,6 +186,7 @@ class SimulateIInteractService:
         image_id: Optional[str] = None,
         dialog_index: Optional[int] = None,
         stop_on_hit_k: Optional[int] = None,
+        initial_query_source: str = "auto",
     ) -> None:
         sample = self.load_target(image_id=image_id, dialog_index=dialog_index)
         if self.target_observer is not None:
@@ -183,10 +194,21 @@ class SimulateIInteractService:
         self._print_target(sample)
 
         print("\nUSER: I want to find this target image.")
-        print(f"USER INITIAL CAPTION: {sample.get('base_caption')}")
+        initial_query = str(sample.get("base_caption") or "").strip()
+        if initial_query_source == "auto":
+            initial_query_source = (
+                "vlm_user" if hasattr(self.user_simulator, "generate_initial_query") else "base_caption"
+            )
+        if initial_query_source == "vlm_user":
+            initial_query, initial_ms = await self.user_simulator.generate_initial_query(sample)
+            print(f"USER INITIAL QUERY FROM IMAGE ({initial_ms} ms): {initial_query}")
+        else:
+            print(f"USER INITIAL QUERY FROM CAPTION: {initial_query}")
 
         gallery = self.service.build_gallery()
-        current_query, rewrite_ms = await self.service.rewrite_query(build_rewrite_context(sample))
+        current_query, rewrite_ms = await self.service.rewrite_query(
+            build_rewrite_context_from_query(initial_query)
+        )
         interaction_state = initialize_interaction_state(current_query)
         print(f"\nRAIR REWRITE ({rewrite_ms} ms): {current_query}")
         print(f"RAIR MEMORY: {self._short_json(interaction_state)}")
@@ -312,6 +334,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--dialog-index", type=int, default=None)
     parser.add_argument("--turns", type=int, default=3)
     parser.add_argument("--stop-on-hit-k", type=int, default=None)
+    parser.add_argument("--initial-query-source", choices=["auto", "base_caption", "vlm_user"], default="auto")
     parser.add_argument("--search-depth", type=int, default=100)
     parser.add_argument("--evidence-top-k", type=int, default=10)
     parser.add_argument("--fact-top-m", type=int, default=4)
@@ -407,6 +430,7 @@ async def main_async(args: argparse.Namespace) -> None:
         image_id=args.image_id,
         dialog_index=args.dialog_index,
         stop_on_hit_k=args.stop_on_hit_k,
+        initial_query_source=args.initial_query_source,
     )
 
 

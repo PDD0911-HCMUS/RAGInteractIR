@@ -29,6 +29,28 @@ class VLMUserSimulationService(UserSimulationService):
         )
         self.target_vlm = target_vlm
 
+    async def generate_initial_query(self, sample: Dict[str, Any]) -> Tuple[str, int]:
+        prompt = (
+            "You are a user starting an image retrieval session. Look at the target image "
+            "and write the first search query you would naturally type to find it. "
+            "Use only visible details from the image. Keep it concise, usually 6 to 14 words. "
+            "Do not mention that you are looking at an image. Return JSON only: "
+            "{\"initial_query\":\"...\"}"
+        )
+        start = time.time()
+        answer = self.target_vlm.generate_with_image(sample=sample, prompt=prompt)
+        latency_ms = int((time.time() - start) * 1000)
+
+        try:
+            data = self._safe_json_loads(answer)
+            query = self._sanitize_query(data.get("initial_query", ""))
+        except Exception:
+            query = self._sanitize_query(answer)
+
+        if not query:
+            query = self._sanitize_query(sample.get("base_caption", ""))
+        return query, latency_ms
+
     async def simulate_turn(
         self,
         sample: Dict[str, Any],
