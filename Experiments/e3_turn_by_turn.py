@@ -538,7 +538,7 @@ async def run_method_turns(
                 "top_captions": current_captions[: max(ks)],
             }
             turn_records.append(strip_evidence_if_needed(turn_record, save_evidence))
-            continue
+            break
 
         evidence = build_evidence(
             service=service,
@@ -830,7 +830,15 @@ def summarize_e3(results: List[Dict[str, Any]], methods: List[str], ks: List[int
 
             method_summary["turns"][str(turn_id)] = turn_summary
 
-        method_summary["final"] = method_summary["turns"].get(str(turns), {})
+        available_turn_ids = [
+            int(turn_id)
+            for turn_id in method_summary["turns"].keys()
+            if str(turn_id).isdigit()
+        ]
+        if available_turn_ids:
+            method_summary["final"] = method_summary["turns"][str(max(available_turn_ids))]
+        else:
+            method_summary["final"] = {}
         summary["methods"][method] = method_summary
 
     return summary
@@ -1035,11 +1043,11 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--split", choices=["train", "val"], default="train")
     parser.add_argument("--limit", type=int, default=20)
     parser.add_argument("--offset", type=int, default=0)
-    parser.add_argument("--turns", type=int, default=3)
+    parser.add_argument("--turns", type=int, default=5)
     parser.add_argument("--initial-query-source", choices=["auto", "base_caption", "vlm_user"], default="auto")
-    parser.add_argument("--k", type=int, nargs="+", default=[1, 5, 10, 20])
+    parser.add_argument("--k", type=int, nargs="+", default=[1, 5, 10, 20, 50])
     parser.add_argument("--search-depth", type=int, default=100)
-    parser.add_argument("--evidence-top-k", type=int, default=3)
+    parser.add_argument("--evidence-top-k", type=int, default=10)
     parser.add_argument("--oracle-overlap-threshold", type=int, default=2)
     parser.add_argument(
         "--methods",
@@ -1054,17 +1062,17 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--fact-delta", type=float, default=0.5)
     parser.add_argument("--clip-model", default="openai/clip-vit-base-patch32")
     parser.add_argument("--device", default=resolve_torch_device("CLIP_DEVICE"))
-    parser.add_argument("--llm-provider", choices=["openai", "local"], default=os.environ.get("RAIR_LLM_PROVIDER", "openai"))
+    parser.add_argument("--llm-provider", choices=["openai", "local"], default=os.environ.get("RAIR_LLM_PROVIDER", "local"))
     parser.add_argument("--reasoning-model", default=os.environ.get("RAIR_REASONING_MODEL", "gpt-4o"))
-    parser.add_argument("--local-llm-model", default=os.environ.get("RAIR_LOCAL_LLM_MODEL", "google/gemma-3-4b-it"))
+    parser.add_argument("--local-llm-model", default=os.environ.get("RAIR_LOCAL_LLM_MODEL", "google/gemma-3-12b-it"))
     parser.add_argument("--local-llm-device", default=resolve_torch_device("LOCAL_LLM_DEVICE"))
-    parser.add_argument("--local-llm-dtype", default=os.environ.get("LOCAL_LLM_DTYPE", "auto"))
+    parser.add_argument("--local-llm-dtype", default=os.environ.get("LOCAL_LLM_DTYPE", "bfloat16"))
     parser.add_argument("--local-llm-max-new-tokens", type=int, default=768)
     parser.add_argument("--local-llm-online", action="store_true")
     parser.add_argument(
         "--selection-policy",
         choices=["oracle_overlap", "llm_user_sim"],
-        default="oracle_overlap",
+        default="llm_user_sim",
         help="How E3 converts RAIR suggestions into the next user query.",
     )
     parser.add_argument(
@@ -1072,7 +1080,7 @@ def parse_args() -> argparse.Namespace:
         default=None,
         help="Optional model override for the simulated user. Leave empty to reuse the active LLM model.",
     )
-    parser.add_argument("--user-sim-provider", choices=["text", "vlm"], default="text")
+    parser.add_argument("--user-sim-provider", choices=["text", "vlm"], default="vlm")
     parser.add_argument("--user-sim-max-output-tokens", type=int, default=512)
     parser.add_argument("--user-sim-temperature", type=float, default=0.0)
     parser.add_argument("--user-sim-vlm-model", default=os.environ.get("RAIR_USER_SIM_VLM_MODEL", "Qwen/Qwen2.5-VL-7B-Instruct"))
@@ -1089,7 +1097,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--stop-on-hit-k",
         type=int,
-        default=None,
+        default=10,
         help="Stop refining a sample once the target is already within top K, simulating user selection.",
     )
     parser.add_argument("--save-evidence", action="store_true")

@@ -29,6 +29,50 @@ class VLMUserSimulationService(UserSimulationService):
         )
         self.target_vlm = target_vlm
 
+    @staticmethod
+    def _compact_vlm_suggestions(suggestions: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+        compact = []
+        for item in suggestions:
+            compact.append(
+                {
+                    "sug": item.get("sug", ""),
+                    "type": item.get("type", ""),
+                    "explain": item.get("explain", ""),
+                }
+            )
+        return compact
+
+    def _build_vlm_context(
+        self,
+        sample: Dict[str, Any],
+        current_query: str,
+        suggestions: List[Dict[str, Any]],
+        candidate_evidence: List[Dict[str, Any]],
+        turn_id: int,
+        interaction_state: Optional[Dict[str, Any]] = None,
+    ) -> Dict[str, Any]:
+        return {
+            "turn": turn_id,
+            "current_query": current_query,
+            "current_query_constraints": self._extract_query_constraints(current_query),
+            "interaction_state": interaction_state or {},
+            "target": {
+                "image_id": sample.get("image_id"),
+                "image_path": sample.get("image_path"),
+                "note": "The target image is provided separately. Do not rely on hidden target annotations.",
+            },
+            "system_suggestions": self._compact_vlm_suggestions(suggestions),
+            "retrieved_candidate_evidence": self._compact_evidence(candidate_evidence),
+            "policy": {
+                "accept": "use a good suggestion as-is when it matches the target image",
+                "edit": "rewrite a partially useful suggestion to match the target image",
+                "combine": "merge multiple useful suggestions",
+                "reject": "keep the current query when suggestions do not match the target image",
+                "add_detail": "add one visible target detail missing from suggestions if helpful",
+                "remove_detail": "remove a query detail that conflicts with the target image",
+            },
+        }
+
     async def generate_initial_query(self, sample: Dict[str, Any]) -> Tuple[str, int]:
         prompt = (
             "You are a user starting an image retrieval session. Look at the target image "
@@ -60,7 +104,7 @@ class VLMUserSimulationService(UserSimulationService):
         turn_id: int,
         interaction_state: Optional[Dict[str, Any]] = None,
     ) -> Tuple[Dict[str, Any], int]:
-        context = self._build_context(
+        context = self._build_vlm_context(
             sample=sample,
             current_query=current_query,
             suggestions=suggestions,
@@ -72,8 +116,24 @@ class VLMUserSimulationService(UserSimulationService):
             "You are the simulated user in an interactive image retrieval task. "
             "Look at the target image. Use candidate evidence only to understand what "
             "the retrieval system is currently confusing with the target. Candidate "
-            "evidence can be wrong for the target. Return valid JSON only.\n"
-            + self.prompt.simulate_user_edit.format(context=self._compact_json(context))
+            "evidence can be wrong for the target. Choose a small useful edit only if it "
+            "would help retrieve the target image. If the target already seems easy to find "
+            "from the current query, reject/no-op. Return valid JSON only.\n"
+            "Context:"
+            + self._compact_json(context)
+            + "\nJSON schema:"
+            "{{"
+            "\"action\":\"accept|edit|combine|reject|add_detail|remove_detail\","
+            "\"selected_suggestions\":[\"...\"],"
+            "\"kept_constraints\":[\"...\"],"
+            "\"added_constraints\":[\"...\"],"
+            "\"negative_constraints\":[\"...\"],"
+            "\"rejected_constraints\":[\"...\"],"
+            "\"added_target_details\":[\"...\"],"
+            "\"removed_details\":[\"...\"],"
+            "\"refined_query\":\"...\","
+            "\"reason\":\"...\""
+            "}}"
         )
 
         start = time.time()

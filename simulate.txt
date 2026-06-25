@@ -1,26 +1,28 @@
 ==========================================================================================
 TARGET
 ==========================================================================================
-split/dialog: train / 102553
-image_id:     148792
-image_path:   val2014/COCO_val2014_000000148792.jpg
-caption:      a long line of food carts with fruit
+split/dialog: train / 84447
+image_id:     346071
+image_path:   val2014/COCO_val2014_000000346071.jpg
+caption:      2 husky dogs ride in a car with their heads hanging out windows
 target visual facts:
-  - a long line of food carts with fruit
-  - a food market
-  - outside
-  - there are people showing
-  - what kind of fruit can you see: mainly citrus
+  - 2 husky dogs ride in a car with their heads hanging out windows
+  - the dogs grown
+  - a color photo
+  - daytime
   - sunny
-  - not anyone wearing a hat
-  - so you see oranges
-  - see lemons; answer: maybe
-  - see limes
+  - they hanging out the passenger side
+  - what color are the dogs: 1 is brown and white and the other black and white
+  - the tongues flapping in the breeze
+  - not you see the driver
+  - not you see other vehicles
 
 USER: I want to find this target image.
-USER INITIAL CAPTION: a long line of food carts with fruit
+[transformers] `torch_dtype` is deprecated! Use `dtype` instead!
+Loading weights: 100%|██████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████| 729/729 [03:34<00:00,  3.41it/s]
+USER INITIAL QUERY FROM IMAGE (221608 ms): two huskies in car with open windows
 ────────────────────────────────────────────────────────────────────────────────────────────────────────────────────── Creating VisDial Gallery + FAISS ───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
-  Finalizing gallery object... ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 0:01:39
+  Finalizing gallery object... ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 0:01:38
             Gallery Build Summary
 ┏━━━━━━━━━━━━━━━━━━━━━━━━━━━┳━━━━━━━━━━━━━━━┓
 ┃ Field                     ┃ Value         ┃
@@ -30,89 +32,300 @@ USER INITIAL CAPTION: a long line of food carts with fruit
 │ Caption embedding shape   │ (123287, 512) │
 │ FAISS image index total   │ 123,287       │
 │ FAISS caption index total │ 123,287       │
-│ DB load time              │ 92.95s        │
-│ Metadata extract time     │ 0.15s         │
-│ Numpy conversion time     │ 5.84s         │
+│ DB load time              │ 92.17s        │
+│ Metadata extract time     │ 0.16s         │
+│ Numpy conversion time     │ 5.98s         │
 │ FAISS build time          │ 0.10s         │
 │ Finalize time             │ 0.00s         │
-│ Total time                │ 99.04s        │
+│ Total time                │ 98.42s        │
 └───────────────────────────┴───────────────┘
 ───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────── Build done ──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
-[transformers] `torch_dtype` is deprecated! Use `dtype` instead!
-Loading weights: 100%|████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████| 1065/1065 [05:25<00:00,  3.27it/s]
+Loading weights:  52%|██████████████████████████████████████████████████████████████████████████████████████████████████████████████                                                                                                       | 550/1065 [04:52<04:30,  1.90it/s]
+Loading weights:  52%|███████████████████████████████████████████████████████████████████████████████████████████████████████████████                                                                                                      | 555/1065 [04:54<03:18,  2.57it/s]
 
-RAIR REWRITE (336094 ms): long line of food carts with fruit
-RAIR MEMORY: {"main_intent":"long line of food carts with fruit","positive_constraints":["long line of food carts with fruit"],"negative_constraints":[],"rejected_constraints":[],"uncertain_constraints":[]}
-Loading weights: 100%|███████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████| 398/398 [00:00<00:00, 15048.25it/s]
+Loading weights:  52%|███████████████████████████████████████████████████████████████████████████████████████████████████████████████▍                                                                                                     | 557/1065 [04:55<03:53,  2.17it/s]
+Loading weights:  53%|████████████████████████████████████████████████████████████████████████████████████████████████████████████████▏                                                                                                    | 561/1065 [04:56<02:23,  3.52it/s]
+Loading weights: 100%|████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████| 1065/1065 [05:40<00:00,  3.13it/s]
+
+RAIR REWRITE (350092 ms): two huskies in car with open windows
+RAIR MEMORY: {"main_intent":"two huskies in car with open windows","positive_constraints":["two huskies in car with open windows"],"negative_constraints":[],"rejected_constraints":[],"uncertain_constraints":[]}
+Loading weights: 100%|███████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████| 398/398 [00:00<00:00, 19337.55it/s]
 
 RAIR RETRIEVAL: target_rank=1
-  #01 val2014/COCO_val2014_000000148792.jpg | a long line of food carts with fruit
-  #02 train2014/COCO_train2014_000000049902.jpg | man standing over an outdoor stand full of apples
-  #03 train2014/COCO_train2014_000000186952.jpg | a food cart that has a front lined with lemons
-  #04 train2014/COCO_train2014_000000322707.jpg | a food cart sitting on a sidewalk next to a street
-  #05 train2014/COCO_train2014_000000539449.jpg | a boy near a fruit cart with hanging bananas
+  #01 val2014/COCO_val2014_000000346071.jpg | 2 husky dogs ride in a car with their heads hanging out windows
+  #02 train2014/COCO_train2014_000000116663.jpg | 3 dogs sit in the driver's, passenger and back seats of a car
+  #03 val2014/COCO_val2014_000000187349.jpg | an ownder of a dog takes a picture of the dog in the back seat
+  #04 train2014/COCO_train2014_000000319062.jpg | 2 white dogs sitting in the back seat of a car
+  #05 train2014/COCO_train2014_000000447424.jpg | a dog sits inside a car with a pair of fuzzy dice
 
 ==========================================================================================
 TURN 1
 ==========================================================================================
 
 RAIR QVFS EVIDENCE:
-  cand#1 val2014/COCO_val2014_000000148792.jpg | a long line of food carts with fruit
-    - a long line of food carts with fruit
-    - a food market
-    - what kind of fruit can you see: mainly citrus
-    - outside
-  cand#2 train2014/COCO_train2014_000000049902.jpg | man standing over an outdoor stand full of apples
-    - there are no other fruits
-    - not he buying the apples
-    - the apples green is red
-    - man standing over an outdoor stand full of apples
-  cand#3 train2014/COCO_train2014_000000186952.jpg | a food cart that has a front lined with lemons
-    - a food cart that has a front lined with lemons
-    - the lemons for sale; answer: the cart seems to be for lemonade or something similar
-    - there are only lemons in the cart
-    - the cart big
-  cand#4 train2014/COCO_train2014_000000322707.jpg | a food cart sitting on a sidewalk next to a street
-    - a food cart sitting on a sidewalk next to a street
-    - any food visible; answer: on the signs that are on the cart
-    - 1 of the people the operator of the cart
-    - not prices posted
-  cand#5 train2014/COCO_train2014_000000539449.jpg | a boy near a fruit cart with hanging bananas
-    - there is only 1 fruit stand
-    - 1 of 4 people vendor for fruit stand; answer: everyone in direct proximity has there back turned so it isn't obvious
-    - a boy near a fruit cart with hanging bananas
-    - any other type of fruit; answer: maybe pears but i can't tell if they aren't just unripe mangoes
+  cand#1 val2014/COCO_val2014_000000346071.jpg | 2 husky dogs ride in a car with their heads hanging out windows
+    - 2 husky dogs ride in a car with their heads hanging out windows
+    - they hanging out the passenger side
+    - what color are the dogs: 1 is brown and white and the other black and white
+    - the dogs grown
+  cand#2 train2014/COCO_train2014_000000116663.jpg | 3 dogs sit in the driver's, passenger and back seats of a car
+    - 3 dogs sit in the driver's, passenger and back seats of a car
+    - you see the car exterior; answer: some of it yes
+    - the car is black
+    - not the dogs wearing seat belts
+  cand#3 val2014/COCO_val2014_000000187349.jpg | an ownder of a dog takes a picture of the dog in the back seat
+    - the backseat of a car
+    - an ownder of a dog takes a picture of the dog in the back seat
+    - the dog is husky
+    - the dog big is big
+  cand#4 train2014/COCO_train2014_000000319062.jpg | 2 white dogs sitting in the back seat of a car
+    - you see anything out of the windows of the car
+    - 2 white dogs sitting in the back seat of a car
+    - which way are the dogs facing: the are facing the camera, towards the front of the car
+    - what type of car: i can't tell, it looks like some sort of hatchback maybe
+  cand#5 train2014/COCO_train2014_000000447424.jpg | a dog sits inside a car with a pair of fuzzy dice
+    - a dog sits inside a car with a pair of fuzzy dice
+    - you see the car; answer: part of the inside of it
+    - you see the car seat
+    - you see the car color; answer: grey
+  cand#6 train2014/COCO_train2014_000000435553.jpg | a dog sitting in a car trunk makes a funny face
+    - you think the dog is enjoying the car ride
+    - anything else in the trunk with the dog; answer: the dog is in the backseat of a car can't really see anything else back there but the back window
+    - a dog sitting in a car trunk makes a funny face
+    - the car interior is grey
+  cand#7 train2014/COCO_train2014_000000151211.jpg | a dog riding in the passenger seat of a car next to a bus
+    - a dog riding in the passenger seat of a car next to a bus
+    - how many people in the car: i cannot see anyone in the car
+    - the car is it looks like a navy blue color
+    - not so you see other cars
+  cand#8 train2014/COCO_train2014_000000499018.jpg | a grainy photo shows an old model car with 2 cats sitting on the roof
+    - car clean
+    - a grainy photo shows an old model car with 2 cats sitting on the roof
+    - car is blue
+    - you tell what kind of car it is; answer: i think it's buick regal, like early 90s
+  cand#9 val2014/COCO_val2014_000000080413.jpg | a small teddy bear is wedged into an opening ina car dashboard
+    - a small teddy bear is wedged into an opening ina car dashboard
+    - any people inside the car; answer: i think i see the shoulder of a person
+    - you see the steering of the car; answer: part of it
+    - and the rest is open, is it
+  cand#10 train2014/COCO_train2014_000000481357.jpg | large sized truck with a medium sized black dog in the passenger seat
+    - large sized truck with a medium sized black dog in the passenger seat
+    - how many passenger in the truck: 0
+    - buildings near the truck
+    - where it is parked: in a parking lot
 
 RAIR DIAGNOSIS:
-{"main_intent":"Find a long line of food carts selling fruit.","candidate_commonalities":["food carts","fruit","outside"],"candidate_ambiguities":["type of fruit","specific setting"],"missing_constraints":["number of carts","style of carts","specific fruit types"],"unsupported_details":[],"refinement_strategy":"Focus on visually specific details mentioned in the evidence, such as lemons or bananas, and the outdoor setting."}
+{"main_intent":"Refine image search for two huskies in a car with open windows.","candidate_commonalities":["huskies","car","open windows"],"candidate_ambiguities":["car color","number of dogs","location of dogs"],"missing_constraints":["specific car model","interior details"],"unsupported_details":[],"refinement_strategy":"Focus on visually specific details mentioned in the evidence, such as color and car features, while avoiding assumptions."}
 
 RAIR SUGGESTIONS:
-  1. food carts with lemons [add_detail] - Specifies lemons as a prominent fruit.
-  2. food carts with bananas [add_detail] - Specifies bananas as a prominent fruit.
-  3. food carts on sidewalk [add_detail] - Clarifies the outdoor location as a sidewalk.
+  1. black and white huskies [add_detail] - Specifies the color pattern of the huskies, as described in the evidence.
+  2. grey car interior [add_detail] - Adds a detail about the car's interior color, mentioned in multiple captions.
+  3. navy blue car [add_detail] - Adds a possible car color based on one caption.
 
-SIMULATED USER (434554 ms):
+SIMULATED USER (9751 ms):
   action: edit
-  reason: The suggestion 'food carts with lemons' adds a specific fruit type that matches the target facts, improving the query.
+  reason: The suggestion 'black and white huskies' matches the target fact about the dogs' colors, so it is added to refine the query.
   kept:
-  - a long line of food carts with fruit
-  - a food market
-  - outside
-  - there are people showing
-  - what kind of fruit can you see: mainly citrus
-  added:
+  - 2 husky dogs ride in a car with their heads hanging out windows
+  - the dogs grown
+  - a color photo
+  - daytime
   - sunny
+  - they hanging out the passenger side
+  added:
+  - the tongues flapping in the breeze
+  - the road paved; answer: i cannot see the road
   rejected:
   - (none)
 
 RAIR MEMORY:
-{"main_intent":"a long line of food carts with fruit","positive_constraints":["a long line of food carts with fruit","a food market","outside","there are people showing","what kind of fruit can you see: mainly citrus","sunny","lemons"],"negative_constraints":[],"rejected_constraints":[],"uncertain_constraints":[]}
-RAIR RULE QUERY: a long line of food carts with fruit, a food market, outside, there are people showing
-RAIR REWRITE (1647 ms): fruit food carts line citrus sunny
+{"main_intent":"2 husky dogs ride in a car with their heads hanging out windows","positive_constraints":["2 husky dogs ride in a car with their heads hanging out windows","the dogs grown","a color photo","daytime","sunny","they hanging out the passenger side","the tongues flapping in the breeze","the road paved; answer: i cannot see the road"],"negative_constraints":[],"rejected_constraints":[],"uncertain_constraints":[]}
+RAIR RULE QUERY: 2 husky dogs ride in a car with their heads hanging out windows, the dogs grown, a color photo, daytime
+RAIR REWRITE (2392 ms): husky dogs in car heads out window
 
 RAIR RETRIEVAL: target_rank=1
-  #01 val2014/COCO_val2014_000000148792.jpg | a long line of food carts with fruit
-  #02 train2014/COCO_train2014_000000322707.jpg | a food cart sitting on a sidewalk next to a street
-  #03 train2014/COCO_train2014_000000149381.jpg | a path goes between trees filled with oranges
-  #04 train2014/COCO_train2014_000000418697.jpg | a variety of fruits laid out on table at a market
-  #05 val2014/COCO_val2014_000000071682.jpg | lemons and limes in baskets in the produce section
+  #01 val2014/COCO_val2014_000000346071.jpg | 2 husky dogs ride in a car with their heads hanging out windows
+  #02 train2014/COCO_train2014_000000116663.jpg | 3 dogs sit in the driver's, passenger and back seats of a car
+  #03 val2014/COCO_val2014_000000187349.jpg | an ownder of a dog takes a picture of the dog in the back seat
+  #04 val2014/COCO_val2014_000000462840.jpg | a dog wearing sunglasses riding in the back of a pick up truck
+  #05 train2014/COCO_train2014_000000435553.jpg | a dog sitting in a car trunk makes a funny face
+
+==========================================================================================
+TURN 2
+==========================================================================================
+
+RAIR QVFS EVIDENCE:
+  cand#1 val2014/COCO_val2014_000000346071.jpg | 2 husky dogs ride in a car with their heads hanging out windows
+    - 2 husky dogs ride in a car with their heads hanging out windows
+    - they hanging out the passenger side
+    - what color are the dogs: 1 is brown and white and the other black and white
+    - the dogs grown
+  cand#2 train2014/COCO_train2014_000000116663.jpg | 3 dogs sit in the driver's, passenger and back seats of a car
+    - 3 dogs sit in the driver's, passenger and back seats of a car
+    - what color are the dogs: white
+    - you see the car exterior; answer: some of it yes
+    - the car is black
+  cand#3 val2014/COCO_val2014_000000187349.jpg | an ownder of a dog takes a picture of the dog in the back seat
+    - the dog is husky
+    - the backseat of a car
+    - an ownder of a dog takes a picture of the dog in the back seat
+    - the dog big is big
+  cand#4 val2014/COCO_val2014_000000462840.jpg | a dog wearing sunglasses riding in the back of a pick up truck
+    - what kind of dog is it: could be a siberian husky, it's a big dog
+    - other vehicles in the picture; answer: a dump truck and a truck and a car coming in the opposite direction
+    - a dog wearing sunglasses riding in the back of a pick up truck
+    - the truck riding down the road
+  cand#5 train2014/COCO_train2014_000000435553.jpg | a dog sitting in a car trunk makes a funny face
+    - anything else in the trunk with the dog; answer: the dog is in the backseat of a car can't really see anything else back there but the back window
+    - you think the dog is enjoying the car ride
+    - the dog is brown and white husky
+    - what color eyes does the husky have: they look yellow or light brown
+  cand#6 train2014/COCO_train2014_000000319062.jpg | 2 white dogs sitting in the back seat of a car
+    - 2 white dogs sitting in the back seat of a car
+    - which way are the dogs facing: the are facing the camera, towards the front of the car
+    - you see anything out of the windows of the car
+    - the dogs in the back is the back
+  cand#7 train2014/COCO_train2014_000000194969.jpg | a dog driving a car down a street
+    - a dog driving a car down a street
+    - any trees in view; answer: bushes behind car
+    - what kind of car is it: station wagon with luggage rack rails on top
+    - sunny out; answer: i think, but it's hard to tell
+  cand#8 train2014/COCO_train2014_000000331379.jpg | a dog seen in the rearview mirror of a car
+    - a dog seen in the rearview mirror of a car
+    - the car moving; answer: probably
+    - the dog in the front seat is back
+    - see trees
+  cand#9 train2014/COCO_train2014_000000343319.jpg | a woman takes a photo of her dog through the mirror of her car on a fall day
+    - the window clean; answer: the windows are down
+    - a woman takes a photo of her dog through the mirror of her car on a fall day
+    - not the dog's mouth open
+    - not the dog on grass
+  cand#10 train2014/COCO_train2014_000000481357.jpg | large sized truck with a medium sized black dog in the passenger seat
+    - large sized truck with a medium sized black dog in the passenger seat
+    - how many passenger in the truck: 0
+    - not trees near the truck
+    - buildings near the truck
+
+RAIR DIAGNOSIS:
+{}
+
+RAIR SUGGESTIONS:
+  1. brown and white husky [add_detail] - Specifies the color pattern of one of the huskies.
+  2. black and white husky [add_detail] - Specifies the color pattern of the other husky.
+
+SIMULATED USER (8366 ms):
+  action: edit
+  reason: The suggestions provide the missing color information about the huskies, which is necessary to refine the query.
+  kept:
+  - 2 husky dogs ride in a car with their heads hanging out windows
+  - the dogs grown
+  - a color photo
+  - daytime
+  - sunny
+  - they hanging out the passenger side
+  added:
+  - (none)
+  rejected:
+  - (none)
+
+RAIR MEMORY:
+{"main_intent":"2 husky dogs ride in a car with their heads hanging out windows","positive_constraints":["2 husky dogs ride in a car with their heads hanging out windows","the dogs grown","a color photo","daytime","sunny","they hanging out the passenger side","the tongues flapping in the breeze","the road paved; answer: i cannot see the road"],"negative_constraints":["you see the driver","you see other vehicles"],"rejected_constraints":[],"uncertain_constraints":[]}
+RAIR RULE QUERY: 2 husky dogs ride in a car with their heads hanging out windows, the dogs grown, a color photo, daytime -you_see_the_driver -you_see_other_vehicles
+RAIR REWRITE (1832 ms): husky dogs in car heads out window
+
+RAIR RETRIEVAL: target_rank=1
+  #01 val2014/COCO_val2014_000000346071.jpg | 2 husky dogs ride in a car with their heads hanging out windows
+  #02 train2014/COCO_train2014_000000116663.jpg | 3 dogs sit in the driver's, passenger and back seats of a car
+  #03 val2014/COCO_val2014_000000187349.jpg | an ownder of a dog takes a picture of the dog in the back seat
+  #04 val2014/COCO_val2014_000000462840.jpg | a dog wearing sunglasses riding in the back of a pick up truck
+  #05 train2014/COCO_train2014_000000435553.jpg | a dog sitting in a car trunk makes a funny face
+
+==========================================================================================
+TURN 3
+==========================================================================================
+
+RAIR QVFS EVIDENCE:
+  cand#1 val2014/COCO_val2014_000000346071.jpg | 2 husky dogs ride in a car with their heads hanging out windows
+    - 2 husky dogs ride in a car with their heads hanging out windows
+    - they hanging out the passenger side
+    - what color are the dogs: 1 is brown and white and the other black and white
+    - the dogs grown
+  cand#2 train2014/COCO_train2014_000000116663.jpg | 3 dogs sit in the driver's, passenger and back seats of a car
+    - 3 dogs sit in the driver's, passenger and back seats of a car
+    - what color are the dogs: white
+    - you see the car exterior; answer: some of it yes
+    - the car is black
+  cand#3 val2014/COCO_val2014_000000187349.jpg | an ownder of a dog takes a picture of the dog in the back seat
+    - the dog is husky
+    - the backseat of a car
+    - an ownder of a dog takes a picture of the dog in the back seat
+    - the dog big is big
+  cand#4 val2014/COCO_val2014_000000462840.jpg | a dog wearing sunglasses riding in the back of a pick up truck
+    - what kind of dog is it: could be a siberian husky, it's a big dog
+    - other vehicles in the picture; answer: a dump truck and a truck and a car coming in the opposite direction
+    - a dog wearing sunglasses riding in the back of a pick up truck
+    - the truck riding down the road
+  cand#5 train2014/COCO_train2014_000000435553.jpg | a dog sitting in a car trunk makes a funny face
+    - anything else in the trunk with the dog; answer: the dog is in the backseat of a car can't really see anything else back there but the back window
+    - you think the dog is enjoying the car ride
+    - the dog is brown and white husky
+    - what color eyes does the husky have: they look yellow or light brown
+  cand#6 train2014/COCO_train2014_000000319062.jpg | 2 white dogs sitting in the back seat of a car
+    - 2 white dogs sitting in the back seat of a car
+    - which way are the dogs facing: the are facing the camera, towards the front of the car
+    - you see anything out of the windows of the car
+    - the dogs in the back is the back
+  cand#7 train2014/COCO_train2014_000000194969.jpg | a dog driving a car down a street
+    - a dog driving a car down a street
+    - any trees in view; answer: bushes behind car
+    - what kind of car is it: station wagon with luggage rack rails on top
+    - sunny out; answer: i think, but it's hard to tell
+  cand#8 train2014/COCO_train2014_000000331379.jpg | a dog seen in the rearview mirror of a car
+    - a dog seen in the rearview mirror of a car
+    - the car moving; answer: probably
+    - the dog in the front seat is back
+    - see trees
+  cand#9 train2014/COCO_train2014_000000343319.jpg | a woman takes a photo of her dog through the mirror of her car on a fall day
+    - the window clean; answer: the windows are down
+    - a woman takes a photo of her dog through the mirror of her car on a fall day
+    - not the dog's mouth open
+    - not the dog on grass
+  cand#10 train2014/COCO_train2014_000000481357.jpg | large sized truck with a medium sized black dog in the passenger seat
+    - large sized truck with a medium sized black dog in the passenger seat
+    - how many passenger in the truck: 0
+    - not trees near the truck
+    - buildings near the truck
+
+RAIR DIAGNOSIS:
+{}
+
+RAIR SUGGESTIONS:
+  1. brown and white husky [add_detail] - Specifies the color pattern of one of the huskies.
+  2. black and white husky [add_detail] - Specifies the color pattern of the other husky.
+
+SIMULATED USER (8465 ms):
+  action: edit
+  reason: The suggestions provide the missing color information about the huskies, which is necessary to refine the query.
+  kept:
+  - 2 husky dogs ride in a car with their heads hanging out windows
+  - the dogs grown
+  - a color photo
+  - daytime
+  - sunny
+  - they hanging out the passenger side
+  added:
+  - (none)
+  rejected:
+  - (none)
+
+RAIR MEMORY:
+{"main_intent":"2 husky dogs ride in a car with their heads hanging out windows","positive_constraints":["2 husky dogs ride in a car with their heads hanging out windows","the dogs grown","a color photo","daytime","sunny","they hanging out the passenger side","the tongues flapping in the breeze","the road paved; answer: i cannot see the road"],"negative_constraints":["you see the driver","you see other vehicles"],"rejected_constraints":[],"uncertain_constraints":[]}
+RAIR RULE QUERY: 2 husky dogs ride in a car with their heads hanging out windows, the dogs grown, a color photo, daytime -you_see_the_driver -you_see_other_vehicles
+RAIR REWRITE (1671 ms): husky dogs in car heads out window
+
+RAIR RETRIEVAL: target_rank=1
+  #01 val2014/COCO_val2014_000000346071.jpg | 2 husky dogs ride in a car with their heads hanging out windows
+  #02 train2014/COCO_train2014_000000116663.jpg | 3 dogs sit in the driver's, passenger and back seats of a car
+  #03 val2014/COCO_val2014_000000187349.jpg | an ownder of a dog takes a picture of the dog in the back seat
+  #04 val2014/COCO_val2014_000000462840.jpg | a dog wearing sunglasses riding in the back of a pick up truck
+  #05 train2014/COCO_train2014_000000435553.jpg | a dog sitting in a car trunk makes a funny face

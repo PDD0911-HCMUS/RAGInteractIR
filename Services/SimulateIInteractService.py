@@ -229,7 +229,7 @@ class SimulateIInteractService:
                     "I stop refining and select it."
                 )
                 self._print_retrieval(current_rank, current_ids, current_captions)
-                continue
+                break
 
             evidence_raw = self.service.build_candidate_evidence(
                 image_ids=current_ids,
@@ -333,7 +333,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--image-id", default=None)
     parser.add_argument("--dialog-index", type=int, default=None)
     parser.add_argument("--turns", type=int, default=3)
-    parser.add_argument("--stop-on-hit-k", type=int, default=None)
+    parser.add_argument("--stop-on-hit-k", type=int, default=1)
     parser.add_argument("--initial-query-source", choices=["auto", "base_caption", "vlm_user"], default="auto")
     parser.add_argument("--search-depth", type=int, default=100)
     parser.add_argument("--evidence-top-k", type=int, default=10)
