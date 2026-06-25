@@ -705,6 +705,19 @@ class VisDialGPTCLIPService:
         data = self._safe_json_loads(answer)
         normalized = self._normalize_reasoning_output(data, current_query=input)
         if not normalized.get("suggestions"):
-            logger.warning("RAIR LLM returned no usable suggestions. Raw response: %s", answer)
-            logger.warning("RAIR prompt evidence: %s", self._compact_json(prompt_evidence))
+            raw_suggestions = []
+            if isinstance(data, dict) and isinstance(data.get("suggestions"), list):
+                raw_suggestions = data.get("suggestions", [])
+            elif isinstance(data, list):
+                raw_suggestions = data
+
+            if raw_suggestions:
+                logger.info(
+                    "RAIR suggestions were filtered as redundant/unsafe. raw_count=%d query=%s",
+                    len(raw_suggestions),
+                    input,
+                )
+            else:
+                logger.warning("RAIR LLM returned no suggestions. Raw response: %s", answer)
+                logger.warning("RAIR prompt evidence: %s", self._compact_json(prompt_evidence))
         return normalized

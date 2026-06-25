@@ -460,6 +460,7 @@ async def run_method_turns(
     fact_delta: float,
     save_evidence: bool,
     selection_policy: str,
+    stop_on_hit_k: Optional[int],
 ) -> Dict[str, Any]:
     current_query = initial_query
     interaction_state = (
@@ -487,6 +488,44 @@ async def run_method_turns(
     ]
 
     for turn_id in range(1, turns + 1):
+        if stop_on_hit_k is not None and current_rank is not None and current_rank <= stop_on_hit_k:
+            turn_record = {
+                "turn": turn_id,
+                "previous_query": current_query,
+                "query": current_query,
+                "interaction_action": "stop_found",
+                "compose_latency_ms": 0,
+                "state_composer_latency_ms": 0,
+                "rule_based_query": None,
+                "query_refinement_policy": "stop_on_hit",
+                "interaction_state_before": interaction_state,
+                "interaction_state_after": interaction_state,
+                "selected_suggestion": None,
+                "user_simulation": {
+                    "action": "stop_found",
+                    "reason": f"target already appears within top {stop_on_hit_k}",
+                },
+                "suggestions": [],
+                "diagnosis": {},
+                "candidate_evidence": [],
+                "oracle_overlap_threshold": oracle_overlap_threshold,
+                "initial_rank": current_rank,
+                "refined_rank": current_rank,
+                "rank_delta": 0,
+                "rank_change": "stopped_found",
+                "improved": 0,
+                "worsened": 0,
+                "unchanged": 1,
+                "lost_target": 0,
+                "recovered_target": 0,
+                **metrics_from_rank(current_rank, ks),
+                "top_ids": current_ids[: max(ks)],
+                "top_scores": current_scores[: max(ks)],
+                "top_captions": current_captions[: max(ks)],
+            }
+            turn_records.append(strip_evidence_if_needed(turn_record, save_evidence))
+            continue
+
         evidence = build_evidence(
             service=service,
             method=method,
@@ -656,6 +695,7 @@ async def evaluate_sample(
     fact_delta: float,
     save_evidence: bool,
     selection_policy: str,
+    stop_on_hit_k: Optional[int],
 ) -> Dict[str, Any]:
     rewritten_query, _ = await service.rewrite_query(build_rewrite_context(sample))
 
@@ -680,6 +720,7 @@ async def evaluate_sample(
             fact_delta=fact_delta,
             save_evidence=save_evidence,
             selection_policy=selection_policy,
+            stop_on_hit_k=stop_on_hit_k,
         )
 
     return {
@@ -734,9 +775,11 @@ def summarize_e3(results: List[Dict[str, Any]], methods: List[str], ks: List[int
             if interaction_items:
                 active_actions = {"accept", "edit", "combine", "add_detail", "remove_detail"}
                 accepted = sum(1 for item in interaction_items if item.get("interaction_action") in active_actions)
+                stopped = sum(1 for item in interaction_items if item.get("interaction_action") == "stop_found")
                 turn_summary["interaction"] = {
                     "accept_rate": accepted / len(interaction_items),
                     "no_op_rate": 1.0 - (accepted / len(interaction_items)),
+                    "stop_found_rate": stopped / len(interaction_items),
                     "edit_rate": (
                         sum(1 for item in interaction_items if item.get("interaction_action") == "edit")
                         / len(interaction_items)
@@ -835,6 +878,7 @@ async def main_async(args: argparse.Namespace) -> None:
                 fact_delta=args.fact_delta,
                 save_evidence=args.save_evidence,
                 selection_policy=args.selection_policy,
+                stop_on_hit_k=args.stop_on_hit_k,
             )
         except Exception:
             if not args.continue_on_error:
@@ -890,6 +934,7 @@ async def main_async(args: argparse.Namespace) -> None:
             "user_sim_model": args.user_sim_model,
             "gallery_overlap": overlap,
             "interaction_policy": args.selection_policy,
+            "stop_on_hit_k": args.stop_on_hit_k,
             "conversation_log_dir": str(args.conversation_log_dir) if args.conversation_log_dir else None,
         },
         "summary": summarize_e3(results, methods, ks, args.turns),
@@ -950,6 +995,12 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument("--user-sim-max-output-tokens", type=int, default=512)
     parser.add_argument("--user-sim-temperature", type=float, default=0.0)
+    parser.add_argument(
+        "--stop-on-hit-k",
+        type=int,
+        default=None,
+        help="Stop refining a sample once the target is already within top K, simulating user selection.",
+    )
     parser.add_argument("--save-evidence", action="store_true")
     parser.add_argument(
         "--conversation-log-dir",
