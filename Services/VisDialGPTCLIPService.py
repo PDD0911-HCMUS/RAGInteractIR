@@ -263,17 +263,30 @@ class VisDialGPTCLIPService:
 
         return gallery
 
-    def faiss_search(self, query_text, gallery, top_k=20):
+    def faiss_search(self, query_text, gallery, top_k=20, retrieval_index: str = "image"):
         """
-        Search image index using query text embedding.
+        Search FAISS gallery using query text embedding.
+
+        retrieval_index:
+        - image:   sim(query_text_embedding, image_embedding)
+        - caption: sim(query_text_embedding, caption_embedding)
         """
+        retrieval_index = str(retrieval_index or "image").lower()
+        if retrieval_index in {"img", "image_embedding", "images"}:
+            retrieval_index = "image"
+        if retrieval_index in {"cap", "caption_embedding", "captions"}:
+            retrieval_index = "caption"
+        if retrieval_index not in {"image", "caption"}:
+            raise ValueError(f"Unsupported retrieval_index: {retrieval_index}")
+
         q = self.embed_texts(query_text)
         q = np.array(q, dtype=np.float32).reshape(1, -1)
 
         # If needed:
         # faiss.normalize_L2(q)
 
-        scores, indices = gallery["img_index"].search(q, top_k)
+        index_key = "cap_index" if retrieval_index == "caption" else "img_index"
+        scores, indices = gallery[index_key].search(q, top_k)
 
         image_ids, captions, s = [], [], []
         for score, idx in zip(scores[0], indices[0]):

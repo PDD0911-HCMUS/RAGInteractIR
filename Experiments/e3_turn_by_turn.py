@@ -475,6 +475,7 @@ async def run_method_turns(
     save_evidence: bool,
     selection_policy: str,
     stop_on_hit_k: Optional[int],
+    retrieval_index: str,
 ) -> Dict[str, Any]:
     current_query = initial_query
     interaction_state = (
@@ -486,6 +487,7 @@ async def run_method_turns(
         query_text=current_query,
         gallery=gallery,
         top_k=search_depth,
+        retrieval_index=retrieval_index,
     )
     current_rank = compute_rank(current_ids, sample)
     turn_records = [
@@ -644,6 +646,7 @@ async def run_method_turns(
             query_text=next_query,
             gallery=gallery,
             top_k=search_depth,
+            retrieval_index=retrieval_index,
         )
         next_rank = compute_rank(next_ids, sample)
         turn_record = {
@@ -711,6 +714,7 @@ async def evaluate_sample(
     selection_policy: str,
     stop_on_hit_k: Optional[int],
     initial_query_source: str,
+    retrieval_index: str,
 ) -> Dict[str, Any]:
     raw_initial_query = str(sample.get("base_caption") or "").strip()
     if initial_query_source == "auto":
@@ -747,6 +751,7 @@ async def evaluate_sample(
             save_evidence=save_evidence,
             selection_policy=selection_policy,
             stop_on_hit_k=stop_on_hit_k,
+            retrieval_index=retrieval_index,
         )
 
     return {
@@ -777,13 +782,20 @@ def summarize_e3(results: List[Dict[str, Any]], methods: List[str], ks: List[int
         }
         for turn_id in range(0, turns + 1):
             turn_items = []
+            active_turn_items = []
             for result in results:
                 method_result = result.get("methods", {}).get(method)
                 if not method_result:
                     continue
                 records = method_result.get("turns", [])
+                if not records:
+                    continue
                 if turn_id < len(records):
-                    turn_items.append(records[turn_id])
+                    item = records[turn_id]
+                    active_turn_items.append(item)
+                else:
+                    item = records[-1]
+                turn_items.append(item)
 
             if not turn_items:
                 continue
@@ -791,6 +803,7 @@ def summarize_e3(results: List[Dict[str, Any]], methods: List[str], ks: List[int
             ranks = [item["rank"] for item in turn_items if item.get("rank") is not None]
             turn_summary: Dict[str, Any] = {
                 "num_samples": len(turn_items),
+                "active_num_samples": len(active_turn_items),
                 "mrr": sum(item.get("mrr", 0.0) for item in turn_items) / len(turn_items),
                 "mean_rank_found": (sum(ranks) / len(ranks)) if ranks else None,
                 "found_rate": len(ranks) / len(turn_items),
@@ -800,7 +813,7 @@ def summarize_e3(results: List[Dict[str, Any]], methods: List[str], ks: List[int
                 turn_summary[key] = sum(item.get(key, 0) for item in turn_items) / len(turn_items)
 
             interaction_items = [
-                item for item in turn_items if item.get("turn", 0) > 0
+                item for item in active_turn_items if item.get("turn", 0) > 0
             ]
             if interaction_items:
                 active_actions = {"accept", "edit", "combine", "add_detail", "remove_detail"}
@@ -957,6 +970,7 @@ async def main_async(args: argparse.Namespace) -> None:
                 selection_policy=args.selection_policy,
                 stop_on_hit_k=args.stop_on_hit_k,
                 initial_query_source=args.initial_query_source,
+                retrieval_index=args.retrieval_index,
             )
         except Exception:
             if not args.continue_on_error:
@@ -1021,6 +1035,7 @@ async def main_async(args: argparse.Namespace) -> None:
             "interaction_policy": args.selection_policy,
             "stop_on_hit_k": args.stop_on_hit_k,
             "initial_query_source": args.initial_query_source,
+            "retrieval_index": args.retrieval_index,
             "conversation_log_dir": str(args.conversation_log_dir) if args.conversation_log_dir else None,
         },
         "summary": summarize_e3(results, methods, ks, args.turns),
@@ -1047,6 +1062,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--initial-query-source", choices=["auto", "base_caption", "vlm_user"], default="auto")
     parser.add_argument("--k", type=int, nargs="+", default=[1, 5, 10, 20, 50])
     parser.add_argument("--search-depth", type=int, default=100)
+    parser.add_argument("--retrieval-index", choices=["image", "caption"], default="image")
     parser.add_argument("--evidence-top-k", type=int, default=10)
     parser.add_argument("--oracle-overlap-threshold", type=int, default=2)
     parser.add_argument(
