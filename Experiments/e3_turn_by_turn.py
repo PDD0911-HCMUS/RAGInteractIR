@@ -476,6 +476,8 @@ async def run_method_turns(
     selection_policy: str,
     stop_on_hit_k: Optional[int],
     retrieval_index: str,
+    fusion_alpha: float,
+    fusion_pool_size: int,
 ) -> Dict[str, Any]:
     current_query = initial_query
     interaction_state = (
@@ -488,6 +490,8 @@ async def run_method_turns(
         gallery=gallery,
         top_k=search_depth,
         retrieval_index=retrieval_index,
+        fusion_alpha=fusion_alpha,
+        fusion_pool_size=fusion_pool_size,
     )
     current_rank = compute_rank(current_ids, sample)
     turn_records = [
@@ -647,6 +651,8 @@ async def run_method_turns(
             gallery=gallery,
             top_k=search_depth,
             retrieval_index=retrieval_index,
+            fusion_alpha=fusion_alpha,
+            fusion_pool_size=fusion_pool_size,
         )
         next_rank = compute_rank(next_ids, sample)
         turn_record = {
@@ -715,6 +721,8 @@ async def evaluate_sample(
     stop_on_hit_k: Optional[int],
     initial_query_source: str,
     retrieval_index: str,
+    fusion_alpha: float,
+    fusion_pool_size: int,
 ) -> Dict[str, Any]:
     raw_initial_query = str(sample.get("base_caption") or "").strip()
     if initial_query_source == "auto":
@@ -752,6 +760,8 @@ async def evaluate_sample(
             selection_policy=selection_policy,
             stop_on_hit_k=stop_on_hit_k,
             retrieval_index=retrieval_index,
+            fusion_alpha=fusion_alpha,
+            fusion_pool_size=fusion_pool_size,
         )
 
     return {
@@ -971,6 +981,8 @@ async def main_async(args: argparse.Namespace) -> None:
                 stop_on_hit_k=args.stop_on_hit_k,
                 initial_query_source=args.initial_query_source,
                 retrieval_index=args.retrieval_index,
+                fusion_alpha=args.fusion_alpha,
+                fusion_pool_size=args.fusion_pool_size,
             )
         except Exception:
             if not args.continue_on_error:
@@ -1036,6 +1048,8 @@ async def main_async(args: argparse.Namespace) -> None:
             "stop_on_hit_k": args.stop_on_hit_k,
             "initial_query_source": args.initial_query_source,
             "retrieval_index": args.retrieval_index,
+            "fusion_alpha": args.fusion_alpha,
+            "fusion_pool_size": args.fusion_pool_size,
             "conversation_log_dir": str(args.conversation_log_dir) if args.conversation_log_dir else None,
         },
         "summary": summarize_e3(results, methods, ks, args.turns),
@@ -1062,7 +1076,9 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--initial-query-source", choices=["auto", "base_caption", "vlm_user"], default="auto")
     parser.add_argument("--k", type=int, nargs="+", default=[1, 5, 10, 20, 50])
     parser.add_argument("--search-depth", type=int, default=100)
-    parser.add_argument("--retrieval-index", choices=["image", "caption"], default="image")
+    parser.add_argument("--retrieval-index", choices=["image", "caption", "fusion"], default="image")
+    parser.add_argument("--fusion-alpha", type=float, default=0.7)
+    parser.add_argument("--fusion-pool-size", type=int, default=200)
     parser.add_argument("--evidence-top-k", type=int, default=10)
     parser.add_argument("--oracle-overlap-threshold", type=int, default=2)
     parser.add_argument(

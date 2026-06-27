@@ -67,6 +67,8 @@ class SimulateIInteractService:
         fact_top_m: int = 4,
         search_depth: int = 100,
         retrieval_index: str = "image",
+        fusion_alpha: float = 0.7,
+        fusion_pool_size: int = 200,
     ) -> None:
         self.service = service
         self.user_simulator = user_simulator
@@ -76,6 +78,8 @@ class SimulateIInteractService:
         self.fact_top_m = fact_top_m
         self.search_depth = search_depth
         self.retrieval_index = retrieval_index
+        self.fusion_alpha = fusion_alpha
+        self.fusion_pool_size = fusion_pool_size
 
     @staticmethod
     def _ensure_list(value: Any) -> List[str]:
@@ -220,6 +224,8 @@ class SimulateIInteractService:
             gallery=gallery,
             top_k=self.search_depth,
             retrieval_index=self.retrieval_index,
+            fusion_alpha=self.fusion_alpha,
+            fusion_pool_size=self.fusion_pool_size,
         )
         current_rank = compute_rank(current_ids, sample)
         self._print_retrieval(current_rank, current_ids, current_captions)
@@ -312,6 +318,8 @@ class SimulateIInteractService:
                 gallery=gallery,
                 top_k=self.search_depth,
                 retrieval_index=self.retrieval_index,
+                fusion_alpha=self.fusion_alpha,
+                fusion_pool_size=self.fusion_pool_size,
             )
             current_rank = compute_rank(current_ids, sample)
             self._print_retrieval(current_rank, current_ids, current_captions)
@@ -340,7 +348,9 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--stop-on-hit-k", type=int, default=1)
     parser.add_argument("--initial-query-source", choices=["auto", "base_caption", "vlm_user"], default="auto")
     parser.add_argument("--search-depth", type=int, default=100)
-    parser.add_argument("--retrieval-index", choices=["image", "caption"], default="image")
+    parser.add_argument("--retrieval-index", choices=["image", "caption", "fusion"], default="image")
+    parser.add_argument("--fusion-alpha", type=float, default=0.7)
+    parser.add_argument("--fusion-pool-size", type=int, default=200)
     parser.add_argument("--evidence-top-k", type=int, default=10)
     parser.add_argument("--fact-top-m", type=int, default=4)
     parser.add_argument("--clip-model", default="openai/clip-vit-base-patch32")
@@ -430,6 +440,8 @@ async def main_async(args: argparse.Namespace) -> None:
         fact_top_m=args.fact_top_m,
         search_depth=args.search_depth,
         retrieval_index=args.retrieval_index,
+        fusion_alpha=args.fusion_alpha,
+        fusion_pool_size=args.fusion_pool_size,
     )
     await runner.run(
         turns=args.turns,

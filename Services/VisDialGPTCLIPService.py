@@ -263,20 +263,32 @@ class VisDialGPTCLIPService:
 
         return gallery
 
-    def faiss_search(self, query_text, gallery, top_k=20, retrieval_index: str = "image"):
+    def faiss_search(
+        self,
+        query_text,
+        gallery,
+        top_k=20,
+        retrieval_index: str = "image",
+        fusion_alpha: float = 0.5,
+        fusion_pool_size: int = 200,
+    ):
         """
         Search FAISS gallery using query text embedding.
 
         retrieval_index:
         - image:   sim(query_text_embedding, image_embedding)
         - caption: sim(query_text_embedding, caption_embedding)
+        - fusion:  alpha * image_sim + (1-alpha) * caption_sim over a
+                   candidate pool retrieved from both indices
         """
         retrieval_index = str(retrieval_index or "image").lower()
         if retrieval_index in {"img", "image_embedding", "images"}:
             retrieval_index = "image"
         if retrieval_index in {"cap", "caption_embedding", "captions"}:
             retrieval_index = "caption"
-        if retrieval_index not in {"image", "caption"}:
+        if retrieval_index in {"both", "hybrid"}:
+            retrieval_index = "fusion"
+        if retrieval_index not in {"image", "caption", "fusion"}:
             raise ValueError(f"Unsupported retrieval_index: {retrieval_index}")
 
         q = self.embed_texts(query_text)
@@ -285,8 +297,31 @@ class VisDialGPTCLIPService:
         # If needed:
         # faiss.normalize_L2(q)
 
-        index_key = "cap_index" if retrieval_index == "caption" else "img_index"
-        scores, indices = gallery[index_key].search(q, top_k)
+        if retrieval_index == "fusion":
+            alpha = min(max(float(fusion_alpha), 0.0), 1.0)
+            pool_size = max(int(fusion_pool_size), int(top_k))
+            img_scores, img_indices = gallery["img_index"].search(q, pool_size)
+            cap_scores, cap_indices = gallery["cap_index"].search(q, pool_size)
+            candidate_indices = sorted(
+                {
+                    int(idx)
+                    for idx in list(img_indices[0]) + list(cap_indices[0])
+                    if int(idx) >= 0
+                }
+            )
+            if not candidate_indices:
+                return [], [], []
+
+            candidate_array = np.array(candidate_indices, dtype=np.int64)
+            img_sims = gallery["img_em"][candidate_array].dot(q[0])
+            cap_sims = gallery["cap_em"][candidate_array].dot(q[0])
+            fused_scores = alpha * img_sims + (1.0 - alpha) * cap_sims
+            order = np.argsort(-fused_scores)[:top_k]
+            indices = np.array([[candidate_indices[int(idx)] for idx in order]], dtype=np.int64)
+            scores = np.array([[float(fused_scores[int(idx)]) for idx in order]], dtype=np.float32)
+        else:
+            index_key = "cap_index" if retrieval_index == "caption" else "img_index"
+            scores, indices = gallery[index_key].search(q, top_k)
 
         image_ids, captions, s = [], [], []
         for score, idx in zip(scores[0], indices[0]):
