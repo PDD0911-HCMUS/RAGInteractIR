@@ -1,571 +1,165 @@
-2026-06-10 11:54:10,381 INFO [rair] RAIR turn: conversation=6599fd0b-23c8-4fe6-b0f7-e8261058ad82 feedback_pairs=0 user_message=person is laying next to a dog
-2026-06-10 11:54:10,381 INFO [rair] Context State C_t:
 {
-  "initial_query": "person is laying next to a dog",
-  "feedback_pairs": [],
-  "pending_suggestions": [],
-  "latest_user_message": "person is laying next to a dog"
-}
-2026-06-10 11:54:11,254 INFO [httpx] HTTP Request: POST https://api.openai.com/v1/responses "HTTP/1.1 200 OK"
-2026-06-10 11:54:11,255 INFO [rair] Rewritten query: person lying next to a dog latency_ms=873
-Using a slow image processor as `use_fast` is unset and a slow processor was saved with this model. `use_fast=True` will be the default behavior in v4.52, even if the model was saved with a slow processor. This will result in minor differences in outputs. You'll still be able to use a slow processor with `use_fast=False`.
-2026-06-10 11:54:13,175 INFO [rair] RAIR candidate evidence top5 use_qafs=True:
-[
-  {
-    "rank": 1,
-    "image_id": "train2014/COCO_train2014_000000440836.jpg",
-    "score": 0.32176321744918823,
-    "caption": "a man sitting on a bench next to a dog",
-    "visual_facts": [
-      "what type of dog is it: it looks like german shepherd",
-      "he wearing coat; answer: man next to dog is wearing coat, other man is wearing sweater or coat as well",
-      "the subjects posing is it looks like candid photo",
-      "cloudy; answer: it looks like night time"
-    ],
-    "positive_facts": [
-      "he wearing coat; answer: man next to dog is wearing coat, other man is wearing sweater or coat as well"
-    ],
-    "negative_facts": [],
-    "uncertain_facts": [
-      "cloudy; answer: it looks like night time",
-      "what type of dog is it: it looks like german shepherd",
-      "the subjects posing is it looks like candid photo"
-    ],
-    "enriched_caption": "a man sitting on a bench next to a dog. Selected visual facts: what type of dog is it: it looks like german shepherd; he wearing coat; answer: man next to dog is wearing coat, other man is wearing sweater or coat as well; the subjects posing is it looks like candid photo; cloudy; answer: it looks like night time",
-    "qafs": {
-      "original_fact_count": 11,
-      "selected_fact_count": 4,
-      "selected": [
-        {
-          "fact": "what type of dog is it: it looks like german shepherd",
-          "score": 0.6519669273069927,
-          "components": {
-            "clip": 0.8753624260425568,
-            "lexical": 0.14285714285714285,
-            "discriminative": 0.8571428571428571,
-            "contradiction": 0.0
+  "num_samples": 500,
+  "methods": {
+    "rair_full_qvfs": {
+      "turns": {
+        "0": {
+          "num_samples": 484,
+          "active_num_samples": 484,
+          "mrr": 0.29099524391267784,
+          "mean_rank_found": 18.052197802197803,
+          "found_rate": 0.7520661157024794,
+          "hit@1": 0.20454545454545456,
+          "hit@5": 0.3739669421487603,
+          "hit@10": 0.47107438016528924,
+          "hit@20": 0.5413223140495868,
+          "hit@50": 0.6590909090909091
+        },
+        "1": {
+          "num_samples": 484,
+          "active_num_samples": 484,
+          "mrr": 0.29518759218342583,
+          "mean_rank_found": 14.600591715976332,
+          "found_rate": 0.6983471074380165,
+          "hit@1": 0.20867768595041322,
+          "hit@5": 0.3822314049586777,
+          "hit@10": 0.49586776859504134,
+          "hit@20": 0.5392561983471075,
+          "hit@50": 0.628099173553719,
+          "interaction": {
+            "accept_rate": 0.4793388429752066,
+            "no_op_rate": 0.5206611570247934,
+            "stop_found_rate": 0.47107438016528924,
+            "edit_rate": 0.47520661157024796,
+            "combine_rate": 0.0,
+            "improved_rate": 0.09090909090909091,
+            "worsened_rate": 0.07851239669421488,
+            "lost_target_rate": 0.08677685950413223,
+            "recovered_target_rate": 0.03305785123966942,
+            "not_found_rate": 0.21487603305785125
           }
         },
-        {
-          "fact": "he wearing coat; answer: man next to dog is wearing coat, other man is wearing sweater or coat as well",
-          "score": 0.6424087113804288,
-          "components": {
-            "clip": 0.8625952005386353,
-            "lexical": 0.2222222222222222,
-            "discriminative": 0.7222222222222222,
-            "contradiction": 0.0
+        "2": {
+          "num_samples": 484,
+          "active_num_samples": 256,
+          "mrr": 0.29559028438397217,
+          "mean_rank_found": 15.252252252252251,
+          "found_rate": 0.6880165289256198,
+          "hit@1": 0.20867768595041322,
+          "hit@5": 0.384297520661157,
+          "hit@10": 0.5020661157024794,
+          "hit@20": 0.5392561983471075,
+          "hit@50": 0.6115702479338843,
+          "interaction": {
+            "accept_rate": 0.5234375,
+            "no_op_rate": 0.4765625,
+            "stop_found_rate": 0.046875,
+            "edit_rate": 0.5234375,
+            "combine_rate": 0.0,
+            "improved_rate": 0.07421875,
+            "worsened_rate": 0.08203125,
+            "lost_target_rate": 0.046875,
+            "recovered_target_rate": 0.02734375,
+            "not_found_rate": 0.54296875
           }
         },
-        {
-          "fact": "the subjects posing is it looks like candid photo",
-          "score": 0.6135169982910156,
-          "components": {
-            "clip": 0.8270339965820312,
-            "lexical": 0.0,
-            "discriminative": 1.0,
-            "contradiction": 0.0
+        "3": {
+          "num_samples": 484,
+          "active_num_samples": 244,
+          "mrr": 0.2976327055541758,
+          "mean_rank_found": 15.176646706586826,
+          "found_rate": 0.6900826446280992,
+          "hit@1": 0.21074380165289255,
+          "hit@5": 0.38636363636363635,
+          "hit@10": 0.506198347107438,
+          "hit@20": 0.5392561983471075,
+          "hit@50": 0.6053719008264463,
+          "interaction": {
+            "accept_rate": 0.3770491803278688,
+            "no_op_rate": 0.6229508196721312,
+            "stop_found_rate": 0.012295081967213115,
+            "edit_rate": 0.3770491803278688,
+            "combine_rate": 0.0,
+            "improved_rate": 0.05327868852459016,
+            "worsened_rate": 0.05737704918032787,
+            "lost_target_rate": 0.028688524590163935,
+            "recovered_target_rate": 0.03278688524590164,
+            "not_found_rate": 0.5860655737704918
           }
         },
-        {
-          "fact": "cloudy; answer: it looks like night time",
-          "score": 0.582583377758662,
-          "components": {
-            "clip": 0.8318334221839905,
-            "lexical": 0.0,
-            "discriminative": 0.8333333333333334,
-            "contradiction": 0.0
+        "4": {
+          "num_samples": 484,
+          "active_num_samples": 241,
+          "mrr": 0.2978369889992065,
+          "mean_rank_found": 14.95808383233533,
+          "found_rate": 0.6900826446280992,
+          "hit@1": 0.21074380165289255,
+          "hit@5": 0.38636363636363635,
+          "hit@10": 0.5103305785123967,
+          "hit@20": 0.5433884297520661,
+          "hit@50": 0.609504132231405,
+          "interaction": {
+            "accept_rate": 0.23651452282157676,
+            "no_op_rate": 0.7634854771784232,
+            "stop_found_rate": 0.008298755186721992,
+            "edit_rate": 0.23651452282157676,
+            "combine_rate": 0.0,
+            "improved_rate": 0.03734439834024896,
+            "worsened_rate": 0.024896265560165973,
+            "lost_target_rate": 0.02074688796680498,
+            "recovered_target_rate": 0.02074688796680498,
+            "not_found_rate": 0.6016597510373444
+          }
+        },
+        "5": {
+          "num_samples": 484,
+          "active_num_samples": 239,
+          "mrr": 0.2980965605642813,
+          "mean_rank_found": 15.101190476190476,
+          "found_rate": 0.6942148760330579,
+          "hit@1": 0.21074380165289255,
+          "hit@5": 0.38636363636363635,
+          "hit@10": 0.5103305785123967,
+          "hit@20": 0.5454545454545454,
+          "hit@50": 0.6115702479338843,
+          "interaction": {
+            "accept_rate": 0.17154811715481172,
+            "no_op_rate": 0.8284518828451883,
+            "stop_found_rate": 0.008368200836820083,
+            "edit_rate": 0.17154811715481172,
+            "combine_rate": 0.0,
+            "improved_rate": 0.029288702928870293,
+            "worsened_rate": 0.02510460251046025,
+            "lost_target_rate": 0.0041841004184100415,
+            "recovered_target_rate": 0.012552301255230125,
+            "not_found_rate": 0.6150627615062761
           }
         }
-      ],
-      "weights": {
-        "alpha": 0.5,
-        "beta": 0.3,
-        "gamma": 0.2,
-        "delta": 0.5
-      }
-    }
-  },
-  {
-    "rank": 2,
-    "image_id": "train2014/COCO_train2014_000000221840.jpg",
-    "score": 0.3145175874233246,
-    "caption": "a beautiful woman laying down next to a large brown dog",
-    "visual_facts": [
-      "the dog is beige",
-      "a beautiful woman laying down next to a large brown dog",
-      "the couch is beige",
-      "the dog big; answer: yup"
-    ],
-    "positive_facts": [
-      "a beautiful woman laying down next to a large brown dog",
-      "the couch is beige",
-      "the dog is beige",
-      "the dog big; answer: yup"
-    ],
-    "negative_facts": [],
-    "uncertain_facts": [],
-    "enriched_caption": "a beautiful woman laying down next to a large brown dog. Selected visual facts: the dog is beige; a beautiful woman laying down next to a large brown dog; the couch is beige; the dog big; answer: yup",
-    "qafs": {
-      "original_fact_count": 11,
-      "selected_fact_count": 4,
-      "selected": [
-        {
-          "fact": "the dog is beige",
-          "score": 0.6987567991018295,
-          "components": {
-            "clip": 0.8975135982036591,
-            "lexical": 0.5,
-            "discriminative": 0.5,
-            "contradiction": 0.0
-          }
-        },
-        {
-          "fact": "a beautiful woman laying down next to a large brown dog",
-          "score": 0.6598874092102051,
-          "components": {
-            "clip": 0.8697748184204102,
-            "lexical": 0.25,
-            "discriminative": 0.75,
-            "contradiction": 0.0
-          }
-        },
-        {
-          "fact": "the couch is beige",
-          "score": 0.6212715327739715,
-          "components": {
-            "clip": 0.8425430655479431,
-            "lexical": 0.0,
-            "discriminative": 1.0,
-            "contradiction": 0.0
-          }
-        },
-        {
-          "fact": "the dog big; answer: yup",
-          "score": 0.6188709914684295,
-          "components": {
-            "clip": 0.8877419829368591,
-            "lexical": 0.25,
-            "discriminative": 0.5,
-            "contradiction": 0.0
-          }
+      },
+      "final": {
+        "num_samples": 484,
+        "active_num_samples": 239,
+        "mrr": 0.2980965605642813,
+        "mean_rank_found": 15.101190476190476,
+        "found_rate": 0.6942148760330579,
+        "hit@1": 0.21074380165289255,
+        "hit@5": 0.38636363636363635,
+        "hit@10": 0.5103305785123967,
+        "hit@20": 0.5454545454545454,
+        "hit@50": 0.6115702479338843,
+        "interaction": {
+          "accept_rate": 0.17154811715481172,
+          "no_op_rate": 0.8284518828451883,
+          "stop_found_rate": 0.008368200836820083,
+          "edit_rate": 0.17154811715481172,
+          "combine_rate": 0.0,
+          "improved_rate": 0.029288702928870293,
+          "worsened_rate": 0.02510460251046025,
+          "lost_target_rate": 0.0041841004184100415,
+          "recovered_target_rate": 0.012552301255230125,
+          "not_found_rate": 0.6150627615062761
         }
-      ],
-      "weights": {
-        "alpha": 0.5,
-        "beta": 0.3,
-        "gamma": 0.2,
-        "delta": 0.5
-      }
-    }
-  },
-  {
-    "rank": 3,
-    "image_id": "val2014/COCO_val2014_000000544122.jpg",
-    "score": 0.3072487413883209,
-    "caption": "lady using oxygen in bed with a little dog",
-    "visual_facts": [
-      "the dog an ankle biter",
-      "lady using oxygen in bed with a little dog",
-      "he paying attention to her",
-      "she have a tube in her nose"
-    ],
-    "positive_facts": [
-      "lady using oxygen in bed with a little dog",
-      "the dog an ankle biter",
-      "she have a tube in her nose",
-      "he paying attention to her"
-    ],
-    "negative_facts": [],
-    "uncertain_facts": [],
-    "enriched_caption": "lady using oxygen in bed with a little dog. Selected visual facts: the dog an ankle biter; lady using oxygen in bed with a little dog; he paying attention to her; she have a tube in her nose",
-    "qafs": {
-      "original_fact_count": 11,
-      "selected_fact_count": 4,
-      "selected": [
-        {
-          "fact": "the dog an ankle biter",
-          "score": 0.6841566999753316,
-          "components": {
-            "clip": 0.9016467332839966,
-            "lexical": 0.3333333333333333,
-            "discriminative": 0.6666666666666666,
-            "contradiction": 0.0
-          }
-        },
-        {
-          "fact": "lady using oxygen in bed with a little dog",
-          "score": 0.6308324595292409,
-          "components": {
-            "clip": 0.8949982523918152,
-            "lexical": 0.16666666666666666,
-            "discriminative": 0.6666666666666666,
-            "contradiction": 0.0
-          }
-        },
-        {
-          "fact": "he paying attention to her",
-          "score": 0.618253406882286,
-          "components": {
-            "clip": 0.8365068137645721,
-            "lexical": 0.0,
-            "discriminative": 1.0,
-            "contradiction": 0.0
-          }
-        },
-        {
-          "fact": "she have a tube in her nose",
-          "score": 0.6125556200742721,
-          "components": {
-            "clip": 0.8251112401485443,
-            "lexical": 0.0,
-            "discriminative": 1.0,
-            "contradiction": 0.0
-          }
-        }
-      ],
-      "weights": {
-        "alpha": 0.5,
-        "beta": 0.3,
-        "gamma": 0.2,
-        "delta": 0.5
       }
     }
   }
-]
-2026-06-10 11:54:16,161 INFO [httpx] HTTP Request: POST https://api.openai.com/v1/responses "HTTP/1.1 200 OK"
-2026-06-10 11:54:16,163 INFO [rair] RAIR diagnosis:
-{
-  "main_intent": "Person lying next to a dog.",
-  "candidate_commonalities": [
-    "Adjacent to a dog."
-  ],
-  "candidate_ambiguities": [
-    "Person's position ambiguous - lying vs. sitting."
-  ],
-  "missing_constraints": [
-    "Environment context unclear."
-  ],
-  "unsupported_details": [
-    "Nighttime and clothing irrelevant."
-  ],
-  "refinement_strategy": "Clarify position and location."
 }
-2026-06-10 11:54:16,163 INFO [rair] RAIR suggestions:
-[
-  {
-    "sug": "person lying beside a large brown dog",
-    "type": "add_detail",
-    "explain": "Adds supported dog detail."
-  },
-  {
-    "sug": "person lying on a couch next to a dog",
-    "type": "disambiguate",
-    "explain": "Narrows the setting."
-  },
-  {
-    "sug": "no unrelated bicycle or street scene",
-    "type": "negative_constraint",
-    "explain": "Removes distractor evidence."
-  }
-]
-2026-06-10 11:54:16,164 INFO [rair] RAIR turn complete: conversation=6599fd0b-23c8-4fe6-b0f7-e8261058ad82 rewrite_ms=873 suggestions=3
-INFO:     127.0.0.1:58089 - "POST /api/v1/vlm/conversations/6599fd0b-23c8-4fe6-b0f7-e8261058ad82/messages HTTP/1.1" 200 OK
-2026-06-10 11:55:13,056 INFO [rair] RAIR turn: conversation=6599fd0b-23c8-4fe6-b0f7-e8261058ad82 feedback_pairs=1 user_message=person is laying next to a dog; person lying beside a large brown dog
-2026-06-10 11:55:17,574 INFO [rair] Context State C_t:
-{
-  "initial_query": "person is laying next to a dog",
-  "feedback_pairs": [
-    {
-      "turn": 1,
-      "suggestions": [
-        {
-          "sug": "person lying beside a large brown dog",
-          "type": "add_detail",
-          "explain": "Adds supported dog detail."
-        },
-        {
-          "sug": "person lying on a couch next to a dog",
-          "type": "disambiguate",
-          "explain": "Narrows the setting."
-        },
-        {
-          "sug": "no unrelated bicycle or street scene",
-          "type": "negative_constraint",
-          "explain": "Removes distractor evidence."
-        }
-      ],
-      "answer": "person is laying next to a dog; person lying beside a large brown dog"
-    }
-  ],
-  "pending_suggestions": [],
-  "latest_user_message": "person is laying next to a dog; person lying beside a large brown dog"
-}
-2026-06-10 11:55:18,558 INFO [httpx] HTTP Request: POST https://api.openai.com/v1/responses "HTTP/1.1 200 OK"
-2026-06-10 11:55:18,559 INFO [rair] Rewritten query: person lying beside a large brown dog -bicycle -street scene latency_ms=983
-2026-06-10 11:55:19,073 INFO [rair] RAIR candidate evidence top5 use_qafs=True:
-[
-  {
-    "rank": 1,
-    "image_id": "train2014/COCO_train2014_000000067126.jpg",
-    "score": 0.3544005751609802,
-    "caption": "a silver bicycle on a parking lot next to a wall",
-    "visual_facts": [
-      "the wall is brown",
-      "there are no street lights",
-      "the bicycle resting against something is kickstand",
-      "a silver bicycle on a parking lot next to a wall"
-    ],
-    "positive_facts": [
-      "a silver bicycle on a parking lot next to a wall",
-      "the wall is brown",
-      "the bicycle resting against something is kickstand"
-    ],
-    "negative_facts": [
-      "there are no street lights"
-    ],
-    "uncertain_facts": [],
-    "enriched_caption": "a silver bicycle on a parking lot next to a wall. Selected visual facts: the wall is brown; there are no street lights; the bicycle resting against something is kickstand; a silver bicycle on a parking lot next to a wall",
-    "qafs": {
-      "original_fact_count": 11,
-      "selected_fact_count": 4,
-      "selected": [
-        {
-          "fact": "the wall is brown",
-          "score": 0.6777985721826554,
-          "components": {
-            "clip": 0.7555971443653107,
-            "lexical": 0.5,
-            "discriminative": 0.75,
-            "contradiction": 0.0
-          }
-        },
-        {
-          "fact": "there are no street lights",
-          "score": 0.6634396195411683,
-          "components": {
-            "clip": 0.7268792390823364,
-            "lexical": 0.5,
-            "discriminative": 0.75,
-            "contradiction": 0.0
-          }
-        },
-        {
-          "fact": "the bicycle resting against something is kickstand",
-          "score": 0.659749904870987,
-          "components": {
-            "clip": 0.7994998097419739,
-            "lexical": 0.2,
-            "discriminative": 1.0,
-            "contradiction": 0.0
-          }
-        },
-        {
-          "fact": "a silver bicycle on a parking lot next to a wall",
-          "score": 0.6380101442337036,
-          "components": {
-            "clip": 0.7760202884674072,
-            "lexical": 0.16666666666666666,
-            "discriminative": 1.0,
-            "contradiction": 0.0
-          }
-        }
-      ],
-      "weights": {
-        "alpha": 0.5,
-        "beta": 0.3,
-        "gamma": 0.2,
-        "delta": 0.5
-      }
-    }
-  },
-  {
-    "rank": 2,
-    "image_id": "train2014/COCO_train2014_000000262670.jpg",
-    "score": 0.34859347343444824,
-    "caption": "a group of cows lay sleeping in the middle of a road",
-    "visual_facts": [
-      "they are in the road",
-      "how many cows are there: 2",
-      "there is a sidewalk",
-      "a group of cows lay sleeping in the middle of a road"
-    ],
-    "positive_facts": [
-      "a group of cows lay sleeping in the middle of a road",
-      "how many cows are there: 2",
-      "they are in the road",
-      "there is a sidewalk"
-    ],
-    "negative_facts": [],
-    "uncertain_facts": [],
-    "enriched_caption": "a group of cows lay sleeping in the middle of a road. Selected visual facts: they are in the road; how many cows are there: 2; there is a sidewalk; a group of cows lay sleeping in the middle of a road",
-    "qafs": {
-      "original_fact_count": 11,
-      "selected_fact_count": 4,
-      "selected": [
-        {
-          "fact": "they are in the road",
-          "score": 0.571080107986927,
-          "components": {
-            "clip": 0.7421602159738541,
-            "lexical": 0.0,
-            "discriminative": 1.0,
-            "contradiction": 0.0
-          }
-        },
-        {
-          "fact": "how many cows are there: 2",
-          "score": 0.5706047162413597,
-          "components": {
-            "clip": 0.7412094324827194,
-            "lexical": 0.0,
-            "discriminative": 1.0,
-            "contradiction": 0.0
-          }
-        },
-        {
-          "fact": "there is a sidewalk",
-          "score": 0.5698090389370918,
-          "components": {
-            "clip": 0.7396180778741837,
-            "lexical": 0.0,
-            "discriminative": 1.0,
-            "contradiction": 0.0
-          }
-        },
-        {
-          "fact": "a group of cows lay sleeping in the middle of a road",
-          "score": 0.5658247729142507,
-          "components": {
-            "clip": 0.7649828791618347,
-            "lexical": 0.0,
-            "discriminative": 0.9166666666666666,
-            "contradiction": 0.0
-          }
-        }
-      ],
-      "weights": {
-        "alpha": 0.5,
-        "beta": 0.3,
-        "gamma": 0.2,
-        "delta": 0.5
-      }
-    }
-  },
-  {
-    "rank": 3,
-    "image_id": "train2014/COCO_train2014_000000516344.jpg",
-    "score": 0.3415416181087494,
-    "caption": "a cow laying down in the middle of the street",
-    "visual_facts": [
-      "the cow is brown",
-      "in the middle of the street",
-      "any person around there; answer: down the street",
-      "a cow laying down in the middle of the street"
-    ],
-    "positive_facts": [
-      "a cow laying down in the middle of the street",
-      "in the middle of the street",
-      "the cow is brown",
-      "any person around there; answer: down the street"
-    ],
-    "negative_facts": [],
-    "uncertain_facts": [],
-    "enriched_caption": "a cow laying down in the middle of the street. Selected visual facts: the cow is brown; in the middle of the street; any person around there; answer: down the street; a cow laying down in the middle of the street",
-    "qafs": {
-      "original_fact_count": 11,
-      "selected_fact_count": 4,
-      "selected": [
-        {
-          "fact": "the cow is brown",
-          "score": 0.6849613964557648,
-          "components": {
-            "clip": 0.7699227929115295,
-            "lexical": 0.5,
-            "discriminative": 0.75,
-            "contradiction": 0.0
-          }
-        },
-        {
-          "fact": "in the middle of the street",
-          "score": 0.6303031742572784,
-          "components": {
-            "clip": 0.7606063485145569,
-            "lexical": 0.5,
-            "discriminative": 0.5,
-            "contradiction": 0.0
-          }
-        },
-        {
-          "fact": "any person around there; answer: down the street",
-          "score": 0.6076877256234486,
-          "components": {
-            "clip": 0.7487087845802307,
-            "lexical": 0.3333333333333333,
-            "discriminative": 0.6666666666666666,
-            "contradiction": 0.0
-          }
-        },
-        {
-          "fact": "a cow laying down in the middle of the street",
-          "score": 0.6024762064218521,
-          "components": {
-            "clip": 0.8049524128437042,
-            "lexical": 0.2,
-            "discriminative": 0.7,
-            "contradiction": 0.0
-          }
-        }
-      ],
-      "weights": {
-        "alpha": 0.5,
-        "beta": 0.3,
-        "gamma": 0.2,
-        "delta": 0.5
-      }
-    }
-  }
-]
-2026-06-10 11:55:21,350 INFO [httpx] HTTP Request: POST https://api.openai.com/v1/responses "HTTP/1.1 200 OK"
-2026-06-10 11:55:21,352 INFO [rair] RAIR diagnosis:
-{
-  "main_intent": "Person lying beside a dog.",
-  "unsupported_details": [
-    "Bicycle, cows, and street scene."
-  ]
-}
-2026-06-10 11:55:21,356 INFO [rair] RAIR suggestions:
-[
-  {
-    "sug": "person lying beside a large brown dog",
-    "type": "add_detail",
-    "explain": "Adds supported dog detail."
-  },
-  {
-    "sug": "person on a couch beside a dog",
-    "type": "disambiguate",
-    "explain": "Narrows the setting."
-  },
-  {
-    "sug": "ignore bicycle and street scene",
-    "type": "negative_constraint",
-    "explain": "Removes unrelated details."
-  }
-]
-2026-06-10 11:55:21,357 INFO [rair] RAIR turn complete: conversation=6599fd0b-23c8-4fe6-b0f7-e8261058ad82 rewrite_ms=983 suggestions=3
-INFO:     127.0.0.1:58134 - "POST /api/v1/vlm/conversations/6599fd0b-23c8-4fe6-b0f7-e8261058ad82/messages HTTP/1.1" 200 OK
-INFO:     127.0.0.1:58148 - "GET /media/train2014/COCO_train2014_000000180641.jpg HTTP/1.1" 200 OK
-INFO:     127.0.0.1:58147 - "GET /media/val2014/COCO_val2014_000000504194.jpg HTTP/1.1" 200 OK
-INFO:     127.0.0.1:58149 - "GET /media/train2014/COCO_train2014_000000502183.jpg HTTP/1.1" 200 OK
-INFO:     127.0.0.1:58151 - "GET /media/train2014/COCO_train2014_000000397461.jpg HTTP/1.1" 200 OK
-INFO:     127.0.0.1:58152 - "GET /media/val2014/COCO_val2014_000000009801.jpg HTTP/1.1" 200 OK
-INFO:     127.0.0.1:58150 - "GET /media/train2014/COCO_train2014_000000381887.jpg HTTP/1.1" 200 OK
-INFO:     127.0.0.1:58150 - "GET /media/val2014/COCO_val2014_000000000074.jpg HTTP/1.1" 200 OK
-INFO:     127.0.0.1:58147 - "GET /media/train2014/COCO_train2014_000000149623.jpg HTTP/1.1" 200 OK
-INFO:     127.0.0.1:58149 - "GET /media/val2014/COCO_val2014_000000316694.jpg HTTP/1.1" 200 OK
-INFO:     127.0.0.1:58152 - "GET /media/val2014/COCO_val2014_000000390348.jpg HTTP/1.1" 200 OK
-INFO:     127.0.0.1:58151 - "GET /media/train2014/COCO_train2014_000000516344.jpg HTTP/1.1" 200 OK
-INFO:     127.0.0.1:58148 - "GET /media/train2014/COCO_train2014_000000372163.jpg HTTP/1.1" 200 OK
-INFO:     127.0.0.1:58150 - "GET /media/train2014/COCO_train2014_000000107881.jpg HTTP/1.1" 200 OK
-INFO:     127.0.0.1:58147 - "GET /media/train2014/COCO_train2014_000000194540.jpg HTTP/1.1" 200 OK
-INFO:     127.0.0.1:58152 - "GET /media/train2014/COCO_train2014_000000439865.jpg HTTP/1.1" 200 OK
-INFO:     127.0.0.1:58149 - "GET /media/train2014/COCO_train2014_000000552093.jpg HTTP/1.1" 200 OK
