@@ -893,11 +893,14 @@ async def main_async(args: argparse.Namespace) -> None:
     else:
         llm_service = OpenAIService(model_name=args.reasoning_model)
 
+    embedding_model = args.siglip_model if args.embedding_backend == "siglip" else args.clip_model
     service = VisDialGPTCLIPService(
-        vlm=args.clip_model,
+        vlm=embedding_model,
         device=args.device,
         openai_service=llm_service,
         reasoning_model=args.local_llm_model if args.llm_provider == "local" else args.reasoning_model,
+        embedding_backend=args.embedding_backend,
+        embedding_mode=args.split,
     )
     user_simulator = None
     if args.selection_policy == "llm_user_sim":
@@ -1031,6 +1034,9 @@ async def main_async(args: argparse.Namespace) -> None:
                 "delta": args.fact_delta,
             },
             "clip_model": args.clip_model,
+            "siglip_model": args.siglip_model,
+            "embedding_backend": args.embedding_backend,
+            "embedding_model": embedding_model,
             "device": args.device,
             "llm_provider": args.llm_provider,
             "reasoning_model": args.reasoning_model,
@@ -1093,6 +1099,8 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--fact-gamma", type=float, default=0.2)
     parser.add_argument("--fact-delta", type=float, default=0.5)
     parser.add_argument("--clip-model", default="openai/clip-vit-base-patch32")
+    parser.add_argument("--siglip-model", default=os.environ.get("RAIR_SIGLIP_MODEL", "google/siglip-base-patch16-224"))
+    parser.add_argument("--embedding-backend", choices=["clip", "siglip"], default=os.environ.get("RAIR_EMBEDDING_BACKEND", "clip"))
     parser.add_argument("--device", default=resolve_torch_device("CLIP_DEVICE"))
     parser.add_argument("--llm-provider", choices=["openai", "local"], default=os.environ.get("RAIR_LLM_PROVIDER", "local"))
     parser.add_argument("--reasoning-model", default=os.environ.get("RAIR_REASONING_MODEL", "gpt-4o"))

@@ -8,8 +8,8 @@ from typing import Optional, List, Tuple, Literal, Any
 import numpy as np
 import torch
 import torch.nn.functional as F
-from transformers import AutoTokenizer, CLIPModel, AutoProcessor
-from sqlalchemy import select
+from transformers import AutoTokenizer, CLIPModel, AutoModel, AutoProcessor
+from sqlalchemy import select, text
 
 from rich.console import Console
 from rich.table import Table
@@ -60,9 +60,13 @@ class VisDialGPTCLIPService:
         rewrite_max_output_tokens: Optional[int] = None,
         reasoning_max_output_tokens: Optional[int] = None,
         compose_max_output_tokens: Optional[int] = None,
+        embedding_backend: str = "clip",
+        embedding_mode: str = "train",
     ) -> None:
         self.vlm = vlm
         self.device = device
+        self.embedding_backend = self._normalize_embedding_backend(embedding_backend)
+        self.embedding_mode = str(embedding_mode or "train")
 
         self.tokenizer = None
         self.processor = None
@@ -93,6 +97,20 @@ class VisDialGPTCLIPService:
             os.environ.get("RAIR_COMPOSE_MAX_TOKENS", "128")
         )
 
+    @staticmethod
+    def _normalize_embedding_backend(value: str) -> str:
+        backend = str(value or "clip").strip().lower()
+        aliases = {
+            "clip": "clip",
+            "openai_clip": "clip",
+            "siglip": "siglip",
+            "sig-lip": "siglip",
+            "google_siglip": "siglip",
+        }
+        if backend not in aliases:
+            raise ValueError(f"Unsupported embedding backend: {value}")
+        return aliases[backend]
+
     def _get_openai_service(self) -> OpenAIService:
         if self.openai_service is None:
             self.openai_service = OpenAIService(model_name=self.reasoning_model or "gpt-5.4-mini")
@@ -100,22 +118,28 @@ class VisDialGPTCLIPService:
 
     def create_vlm(self):
         local_files_only = os.environ.get("HF_LOCAL_FILES_ONLY", "1") != "0"
-        tokenizer = AutoTokenizer.from_pretrained(
-            self.vlm,
-            local_files_only=local_files_only,
-        )
-        model = CLIPModel.from_pretrained(
-            self.vlm,
-            local_files_only=local_files_only,
-        ).to(self.device).eval()
-        processor = AutoProcessor.from_pretrained(
-            self.vlm,
-            local_files_only=local_files_only,
-        )
+        processor = AutoProcessor.from_pretrained(self.vlm, local_files_only=local_files_only)
+        if self.embedding_backend == "siglip":
+            tokenizer = None
+            model = AutoModel.from_pretrained(
+                self.vlm,
+                local_files_only=local_files_only,
+            ).to(self.device).eval()
+        else:
+            tokenizer = AutoTokenizer.from_pretrained(
+                self.vlm,
+                local_files_only=local_files_only,
+            )
+            model = CLIPModel.from_pretrained(
+                self.vlm,
+                local_files_only=local_files_only,
+            ).to(self.device).eval()
         return tokenizer, processor, model
 
     def _ensure_vlm_loaded(self):
-        if self.tokenizer is None or self.processor is None or self.model is None:
+        if self.processor is None or self.model is None or (
+            self.embedding_backend == "clip" and self.tokenizer is None
+        ):
             self.tokenizer, self.processor, self.model = self.create_vlm()
 
     def preload_model(self):
@@ -127,12 +151,23 @@ class VisDialGPTCLIPService:
         Encode text list into normalized CLIP text embeddings.
         """
         self._ensure_vlm_loaded()
-        inputs = self.tokenizer(
-            text=texts,
-            padding=True,
-            truncation=True,
-            return_tensors="pt"
-        ).to(self.device)
+        if isinstance(texts, str):
+            texts = [texts]
+
+        if self.embedding_backend == "siglip":
+            inputs = self.processor(
+                text=list(texts),
+                padding="max_length",
+                truncation=True,
+                return_tensors="pt",
+            ).to(self.device)
+        else:
+            inputs = self.tokenizer(
+                text=texts,
+                padding=True,
+                truncation=True,
+                return_tensors="pt"
+            ).to(self.device)
 
         feats = self.model.get_text_features(**inputs)
         if not torch.is_tensor(feats):
@@ -148,9 +183,34 @@ class VisDialGPTCLIPService:
 
         return feats.cpu()
 
+    def _load_gallery_rows(self):
+        if self.embedding_backend == "siglip":
+            with SessionLocal() as session:
+                return session.execute(
+                    text(
+                        '''
+                        SELECT "image_path", "caption", "img_em", "cap_em"
+                        FROM "VisDialSigLIPCapDial"
+                        WHERE "mode" = :mode AND "model_name" = :model_name
+                        ORDER BY "ID"
+                        '''
+                    ),
+                    {"mode": self.embedding_mode, "model_name": self.vlm},
+                ).all()
+
+        with SessionLocal() as session:
+            return session.execute(
+                select(
+                    VisDialCLIPCapDial.image_path,
+                    VisDialCLIPCapDial.caption,
+                    VisDialCLIPCapDial.img_em,
+                    VisDialCLIPCapDial.cap_em,
+                )
+            ).all()
+
     def build_gallery(self):
         """
-        Build FAISS gallery from VisDialCLIPCapDial table.
+        Build FAISS gallery from the selected embedding backend table.
         """
         import faiss
 
@@ -172,21 +232,14 @@ class VisDialGPTCLIPService:
             # Step 1: Load rows from DB
             progress.update(task, description="Loading rows from database...", completed=0)
             t0 = time.perf_counter()
-            with SessionLocal() as session:
-                rows = session.execute(
-                    select(
-                        VisDialCLIPCapDial.image_path,
-                        VisDialCLIPCapDial.caption,
-                        VisDialCLIPCapDial.img_em,
-                        VisDialCLIPCapDial.cap_em,
-                    )
-                ).all()
+            rows = self._load_gallery_rows()
             t1 = time.perf_counter()
             progress.advance(task)
 
             if not rows:
-                console.print("[bold red]No data found in VisDialCLIPCapDial.[/bold red]")
-                raise ValueError("No data found in VisDialCLIPCapDial.")
+                table_name = "VisDialSigLIPCapDial" if self.embedding_backend == "siglip" else "VisDialCLIPCapDial"
+                console.print(f"[bold red]No data found in {table_name}.[/bold red]")
+                raise ValueError(f"No data found in {table_name}.")
 
             # Step 2: Extract metadata
             progress.update(task, description="Extracting image paths and captions...", completed=1)
@@ -247,6 +300,8 @@ class VisDialGPTCLIPService:
         summary.add_column("Value", style="green")
 
         summary.add_row("Loaded rows", f"{len(rows):,}")
+        summary.add_row("Embedding backend", self.embedding_backend)
+        summary.add_row("Embedding model", self.vlm)
         summary.add_row("Image embedding shape", str(img_embeddings.shape))
         summary.add_row("Caption embedding shape", str(cap_embeddings.shape))
         summary.add_row("FAISS image index total", f"{img_index.ntotal:,}")
