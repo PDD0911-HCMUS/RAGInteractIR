@@ -1,154 +1,95 @@
-import argparse
-import json
-import sys
-from pathlib import Path
-from typing import Dict, List, Tuple
-
+import pandas as pd
 import matplotlib.pyplot as plt
+from io import StringIO
+from pathlib import Path
 
+data = """Turn\tCLIP λ=0.8 Hit@10\tCLIP λ=0.8 Hit@20\tCLIP λ=0.8 Hit@50\tCLIP λ=0.9 Hit@10\tCLIP λ=0.9 Hit@20\tCLIP λ=0.9 Hit@50\tSigLIP λ=0.9 Hit@10\tSigLIP λ=0.9 Hit@20\tSigLIP λ=0.9 Hit@50
+0\t0.541\t0.6312\t0.7399\t0.5481\t0.6336\t0.7435\t0.7607\t0.8183\t0.889
+1\t0.5736\t0.6645\t0.766\t0.576\t0.6621\t0.7738\t0.7797\t0.8373\t0.905
+2\t0.5814\t0.6692\t0.7708\t0.5855\t0.6704\t0.7767\t0.7838\t0.8414\t0.9091
+3\t0.5831\t0.671\t0.7743\t0.5891\t0.6734\t0.7803\t0.7862\t0.8426\t0.9103
+4\t0.5855\t0.6722\t0.7767\t0.5909\t0.6752\t0.7821\t0.7868\t0.8438\t0.9103
+5\t0.5855\t0.6722\t0.7773\t0.5914\t0.6758\t0.7821\t0.788\t0.8462\t0.9115
+"""
 
-PROJECT_ROOT = Path(__file__).resolve().parents[1]
-if str(PROJECT_ROOT) not in sys.path:
-    sys.path.append(str(PROJECT_ROOT))
+df = pd.read_csv(StringIO(data), sep="\t")
 
-from Experiments.e3_turn_by_turn import summarize_e3
+plt.rcParams.update({
+    "font.family": "DejaVu Sans",
+    "font.size": 11,
+    "axes.titlesize": 15,
+    "axes.labelsize": 12,
+    "legend.fontsize": 9,
+})
 
+fig, ax = plt.subplots(figsize=(11, 6.5), dpi=200)
 
-METHOD = "rair_full_qvfs"
-DEFAULT_METRICS = [
-    ("mrr", "MRR"),
-    ("hit@10", "Hit@10"),
-    ("hit@20", "Hit@20"),
-    ("hit@50", "Hit@50"),
-]
+# Phân biệt metric bằng linestyle + marker
+style_map = {
+    "Hit@10": {"linestyle": "-",  "marker": "o"},
+    "Hit@20": {"linestyle": "--", "marker": "s"},
+    "Hit@50": {"linestyle": ":",  "marker": "^"},
+}
 
+# Phân biệt backbone + lambda bằng màu
+color_map = {
+    ("CLIP", "0.8"): "#7FB3FF",    # xanh nhạt
+    ("CLIP", "0.9"): "#1F5FBF",    # xanh đậm
+    ("SigLIP", "0.8"): "#FFBE7A",  # cam nhạt (để dành khi có dữ liệu)
+    ("SigLIP", "0.9"): "#D97706",  # cam đậm
+}
 
-def load_turn_series(path: Path, metrics: List[Tuple[str, str]]) -> Dict[str, List[float]]:
-    data = json.loads(path.read_text(encoding="utf-8"))
-    summary = data.get("summary")
-    if data.get("results"):
-        config = data.get("config") or {}
-        turns_arg = int(config.get("turns") or 5)
-        ks = config.get("ks") or [1, 5, 10, 20, 50]
-        methods = [METHOD]
-        summary = summarize_e3(data["results"], methods, ks, turns_arg)
+for col in df.columns:
+    if col == "Turn":
+        continue
 
-    turns = summary["methods"][METHOD]["turns"]
-    max_turn = max(int(key) for key in turns.keys())
+    parts = col.split()
+    backbone = parts[0]          # CLIP / SigLIP
+    lam = parts[1].split("=")[1] # 0.8 / 0.9
+    metric = parts[2]            # Hit@10 / Hit@20 / Hit@50
 
-    series = {metric_key: [] for metric_key, _ in metrics}
-    for turn_id in range(max_turn + 1):
-        item = turns[str(turn_id)]
-        for metric_key, _ in metrics:
-            series[metric_key].append(float(item.get(metric_key, 0.0)))
-    return series
+    style = style_map[metric]
+    color = color_map[(backbone, lam)]
 
-
-def configure_matplotlib() -> None:
-    plt.rcParams.update(
-        {
-            "font.family": "serif",
-            "font.size": 10,
-            "axes.labelsize": 10,
-            "axes.titlesize": 11,
-            "legend.fontsize": 9,
-            "xtick.labelsize": 9,
-            "ytick.labelsize": 9,
-            "axes.linewidth": 0.8,
-            "pdf.fonttype": 42,
-            "ps.fonttype": 42,
-        }
+    ax.plot(
+        df["Turn"],
+        df[col],
+        label=col,
+        color=color,
+        linestyle=style["linestyle"],
+        marker=style["marker"],
+        linewidth=2.3,
+        markersize=5.5,
     )
 
+ax.set_title("Best-so-far Hit@K across Interaction Turns")
+ax.set_xlabel("Interaction Turn")
+ax.set_ylabel("Hit@K")
+ax.set_xticks(df["Turn"])
 
-def plot_chart(
-    input_files: List[Path],
-    labels: List[str],
-    output_prefix: Path,
-) -> None:
-    configure_matplotlib()
+# Nếu muốn dễ nhìn hơn
+ax.set_ylim(0.5, 0.95)
 
-    metrics = DEFAULT_METRICS
-    loaded = [load_turn_series(path, metrics) for path in input_files]
-    max_turn = max(len(item[metrics[0][0]]) for item in loaded) - 1
-    turns = list(range(max_turn + 1))
+# Nếu muốn trục chuẩn tuyệt đối thì dùng:
+# ax.set_ylim(0.0, 1.0)
 
-    colors = ["#1f77b4", "#7f7f7f", "#d62728", "#2ca02c", "#9467bd"]
-    markers = ["o", "s", "^", "D", "v"]
+ax.grid(axis="y", alpha=0.35)
+ax.spines["top"].set_visible(False)
+ax.spines["right"].set_visible(False)
 
-    fig, axes = plt.subplots(2, 2, figsize=(7.2, 4.8), sharex=True)
-    axes = axes.flatten()
+ax.legend(
+    loc="upper center",
+    bbox_to_anchor=(0.5, -0.18),
+    ncol=3,
+    frameon=False,
+)
 
-    for ax, (metric_key, title) in zip(axes, metrics):
-        for idx, (label, series) in enumerate(zip(labels, loaded)):
-            values = series[metric_key]
-            padded = values + [values[-1]] * (len(turns) - len(values))
-            ax.plot(
-                turns,
-                padded[: len(turns)],
-                label=label,
-                color=colors[idx % len(colors)],
-                marker=markers[idx % len(markers)],
-                linewidth=1.8,
-                markersize=4.2,
-            )
-        ax.set_title(title, pad=4)
-        ax.set_xlabel("Interaction turn")
-        ax.set_ylabel(title)
-        ax.set_xticks(turns)
-        ax.grid(True, linestyle="--", linewidth=0.5, alpha=0.45)
-        ax.spines["top"].set_visible(False)
-        ax.spines["right"].set_visible(False)
+fig.tight_layout()
 
-    handles, legend_labels = axes[0].get_legend_handles_labels()
-    fig.legend(
-        handles,
-        legend_labels,
-        loc="upper center",
-        ncol=min(3, len(legend_labels)),
-        frameon=False,
-        bbox_to_anchor=(0.5, 1.02),
-    )
-    fig.tight_layout(rect=(0, 0, 1, 0.95))
+out_dir = Path(r"F:\RAGInteractIR\docs")
+out_dir.mkdir(parents=True, exist_ok=True)
 
-    output_prefix.parent.mkdir(parents=True, exist_ok=True)
-    for ext in ("png", "pdf"):
-        output_path = output_prefix.with_suffix(f".{ext}")
-        fig.savefig(output_path, dpi=300, bbox_inches="tight")
-        print(output_path)
+fig.savefig(out_dir / "multiturn_hitk_all_lines.png", bbox_inches="tight", dpi=300)
+fig.savefig(out_dir / "multiturn_hitk_all_lines.svg", bbox_inches="tight")
 
-
-def parse_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(
-        description="Plot E3 retrieval backend comparison line charts."
-    )
-    parser.add_argument(
-        "--inputs",
-        type=Path,
-        nargs="+",
-        required=True,
-        help="E3 JSON result files.",
-    )
-    parser.add_argument(
-        "--labels",
-        nargs="+",
-        required=True,
-        help="Legend labels matching --inputs.",
-    )
-    parser.add_argument(
-        "--output-prefix",
-        type=Path,
-        default=Path("docs/e3_retrieval_backend_line_chart"),
-    )
-    return parser.parse_args()
-
-
-def main() -> None:
-    args = parse_args()
-    if len(args.inputs) != len(args.labels):
-        raise ValueError("--inputs and --labels must have the same length")
-    plot_chart(args.inputs, args.labels, args.output_prefix)
-
-
-if __name__ == "__main__":
-    main()
+plt.show()
