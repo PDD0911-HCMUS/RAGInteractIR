@@ -206,6 +206,8 @@ class VisDialGPTCLIPService:
                     VisDialCLIPCapDial.img_em,
                     VisDialCLIPCapDial.cap_em,
                 )
+                .where(VisDialCLIPCapDial.mode == self.embedding_mode)
+                .order_by(VisDialCLIPCapDial.ID)
             ).all()
 
     def build_gallery(self):
@@ -432,15 +434,15 @@ class VisDialGPTCLIPService:
 
     def build_dial(self, suggestion, query):
         """
-        - Ta cần xác định được đâu là respond của LLMs và query User.
-        - Ta sẽ nối lại thành (Sg_i, Query_i, ...) -> được gọi là 1 context dialouge.
-        - Việc cần xử lý ở FE sẽ là thu thập các cấu trúc đầu vào.
-        - Sử dụng một Promt LLMs để xác đinh:
-            - sự thay đổi của hội thoại
-            - trích xuất keywords
-            - tóm tắt nội dung
-            -> CoT để re-write lại thành 1 query
-            -> sử dụng cái này để suy luận
+        - Ta cáº§n xÃ¡c Ä‘á»‹nh Ä‘Æ°á»£c Ä‘Ã¢u lÃ  respond cá»§a LLMs vÃ  query User.
+        - Ta sáº½ ná»‘i láº¡i thÃ nh (Sg_i, Query_i, ...) -> Ä‘Æ°á»£c gá»i lÃ  1 context dialouge.
+        - Viá»‡c cáº§n xá»­ lÃ½ á»Ÿ FE sáº½ lÃ  thu tháº­p cÃ¡c cáº¥u trÃºc Ä‘áº§u vÃ o.
+        - Sá»­ dá»¥ng má»™t Promt LLMs Ä‘á»ƒ xÃ¡c Ä‘inh:
+            - sá»± thay Ä‘á»•i cá»§a há»™i thoáº¡i
+            - trÃ­ch xuáº¥t keywords
+            - tÃ³m táº¯t ná»™i dung
+            -> CoT Ä‘á»ƒ re-write láº¡i thÃ nh 1 query
+            -> sá»­ dá»¥ng cÃ¡i nÃ y Ä‘á»ƒ suy luáº­n
         """
         
         
@@ -824,3 +826,4 @@ class VisDialGPTCLIPService:
                 logger.warning("RAIR LLM returned no suggestions. Raw response: %s", answer)
                 logger.warning("RAIR prompt evidence: %s", self._compact_json(prompt_evidence))
         return normalized
+
