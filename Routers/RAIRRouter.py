@@ -34,6 +34,11 @@ class RAIRCreateSessionRequest(BaseModel):
         ge=1,
         description="Candidate pool size for fusion reranking.",
     )
+    result_top_k: Optional[int] = Field(
+        default=None,
+        ge=1,
+        description="Number of retrieved images returned to the frontend.",
+    )
 
 
 class RAIRFeedbackRequest(BaseModel):
@@ -74,6 +79,7 @@ class RAIRRouter:
                 retrieval_index=req.retrieval_index,
                 fusion_alpha=req.fusion_alpha,
                 fusion_pool_size=req.fusion_pool_size,
+                result_top_k=req.result_top_k,
             )
         except ValueError as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc

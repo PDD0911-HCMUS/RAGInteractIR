@@ -64,6 +64,7 @@ class RAIRSession:
     retrieval_index: str
     fusion_alpha: float
     fusion_pool_size: int
+    result_top_k: int
     initial_query: str = ""
     current_query: str = ""
     turn: int = 0
@@ -316,10 +317,11 @@ class RAIRInteractiveRetrievalService:
         image_ids: List[Any],
         captions: List[str],
         scores: List[float],
+        result_top_k: int,
     ) -> List[Dict[str, Any]]:
         results = []
         for rank, (image_id, caption, score) in enumerate(
-            zip(image_ids[: self.result_top_k], captions[: self.result_top_k], scores[: self.result_top_k]),
+            zip(image_ids[:result_top_k], captions[:result_top_k], scores[:result_top_k]),
             start=1,
         ):
             results.append(
@@ -353,7 +355,7 @@ class RAIRInteractiveRetrievalService:
         image_ids, captions, scores = retrieval_service.faiss_search(
             query_text=rewritten_query,
             gallery=gallery,
-            top_k=max(self.search_depth, self.result_top_k, self.evidence_top_k),
+            top_k=max(self.search_depth, session.result_top_k, self.evidence_top_k),
             retrieval_index=session.retrieval_index,
             fusion_alpha=session.fusion_alpha,
             fusion_pool_size=session.fusion_pool_size,
@@ -393,7 +395,7 @@ class RAIRInteractiveRetrievalService:
                 "fusion_alpha": session.fusion_alpha if session.retrieval_index == "fusion" else None,
                 "fusion_pool_size": session.fusion_pool_size if session.retrieval_index == "fusion" else None,
                 "search_depth": self.search_depth,
-                "results": self._format_results(image_ids, captions, scores),
+                "results": self._format_results(image_ids, captions, scores, session.result_top_k),
             },
             "candidate_evidence": candidate_evidence,
             "fact_selection": {
@@ -424,12 +426,14 @@ class RAIRInteractiveRetrievalService:
         retrieval_index: Optional[str] = None,
         fusion_alpha: Optional[float] = None,
         fusion_pool_size: Optional[int] = None,
+        result_top_k: Optional[int] = None,
     ) -> Dict[str, Any]:
         backend = self._normalize_embedding_backend(embedding_backend or self.embedding_backend)
         model_name = str(embedding_model or self._default_model_for_backend(backend))
         index = self._normalize_retrieval_index(retrieval_index or self.retrieval_index)
         alpha = self.fusion_alpha if fusion_alpha is None else min(max(float(fusion_alpha), 0.0), 1.0)
         pool_size = self.fusion_pool_size if fusion_pool_size is None else max(int(fusion_pool_size), 1)
+        top_k = self.result_top_k if result_top_k is None else max(int(result_top_k), 1)
 
         session_id = str(uuid.uuid4())
         session = RAIRSession(
@@ -439,6 +443,7 @@ class RAIRInteractiveRetrievalService:
             retrieval_index=index,
             fusion_alpha=alpha,
             fusion_pool_size=pool_size,
+            result_top_k=top_k,
         )
         self._sessions[session_id] = session
         return {
@@ -454,6 +459,7 @@ class RAIRInteractiveRetrievalService:
         retrieval_index: Optional[str] = None,
         fusion_alpha: Optional[float] = None,
         fusion_pool_size: Optional[int] = None,
+        result_top_k: Optional[int] = None,
     ) -> Dict[str, Any]:
         created = self.create_session(
             embedding_backend=embedding_backend,
@@ -461,6 +467,7 @@ class RAIRInteractiveRetrievalService:
             retrieval_index=retrieval_index,
             fusion_alpha=fusion_alpha,
             fusion_pool_size=fusion_pool_size,
+            result_top_k=result_top_k,
         )
         return await self.submit_feedback(created["session_id"], initial_query)
 
@@ -512,6 +519,7 @@ class RAIRInteractiveRetrievalService:
             "retrieval_index": session.retrieval_index,
             "fusion_alpha": session.fusion_alpha if session.retrieval_index == "fusion" else None,
             "fusion_pool_size": session.fusion_pool_size if session.retrieval_index == "fusion" else None,
+            "result_top_k": session.result_top_k,
             "feedback_pairs": session.feedback_pairs,
             "pending_suggestions": session.pending_suggestions,
         }

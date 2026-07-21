@@ -59,7 +59,8 @@ Full body:
   "embedding_model": "google/siglip-base-patch16-224",
   "retrieval_index": "fusion",
   "fusion_alpha": 0.9,
-  "fusion_pool_size": 200
+  "fusion_pool_size": 200,
+  "result_top_k": 50
 }
 ```
 
@@ -72,6 +73,7 @@ Full body:
 | `retrieval_index` | string | no | `image`, `caption`, or `fusion`. |
 | `fusion_alpha` | number | no | Image score weight when `retrieval_index=fusion`. Must be in `[0.0, 1.0]`. |
 | `fusion_pool_size` | integer | no | Candidate pool size for fusion reranking. |
+| `result_top_k` | integer | no | Number of retrieved images returned to the frontend. Default is `RAIR_RESULT_TOP_K` or 20. |
 
 ### Response
 
@@ -88,6 +90,7 @@ Full body:
     "retrieval_index": "fusion",
     "fusion_alpha": 0.9,
     "fusion_pool_size": 200,
+    "result_top_k": 50,
     "feedback_pairs": [],
     "pending_suggestions": []
   }
@@ -128,6 +131,7 @@ This endpoint is used for both the first query and later feedback turns.
     "retrieval_index": "fusion",
     "fusion_alpha": 0.9,
     "fusion_pool_size": 200,
+    "result_top_k": 50,
     "feedback_pairs": [],
     "pending_suggestions": [
       {
@@ -241,6 +245,8 @@ Returns the session state and full turn history. No request body.
 - `POST /api/v1/rair/sessions` only creates an empty session.
 - The first retrieval happens at `POST /api/v1/rair/sessions/{session_id}/turns`.
 - Existing legacy endpoints under `/api/v1/vlm/...` are separate from the RAIR API.
+
+- To return more than 20 images, set `result_top_k` when creating the session. Example: `"result_top_k": 50`.
 - If frontend base URL ends with `/`, avoid adding another leading slash to the path to prevent URLs such as `http://localhost:8000//api/v1/...`.
 
 ## Curl Examples
@@ -250,7 +256,7 @@ Create session:
 ```bash
 curl -X POST http://localhost:8000/api/v1/rair/sessions \
   -H "Content-Type: application/json" \
-  -d '{"embedding_backend":"siglip","retrieval_index":"fusion","fusion_alpha":0.9}'
+  -d '{"embedding_backend":"siglip","retrieval_index":"fusion","fusion_alpha":0.9,"result_top_k":50}'
 ```
 
 Send first query:
