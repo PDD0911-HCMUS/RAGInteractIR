@@ -254,6 +254,28 @@ class RAIRInteractiveRetrievalService:
             self._get_retrieval_service().preload_model()
         if _env_bool("RAIR_PRELOAD_GALLERY", True):
             self.get_gallery()
+        if _env_bool("RAIR_PRELOAD_LLM", True):
+            self.preload_llm()
+
+    def preload_llm(self) -> None:
+        """Load the local reasoning LLM during API startup when possible."""
+        start = time.perf_counter()
+        llm_service = self._get_llm_service()
+        if hasattr(llm_service, "_load"):
+            logger.info(
+                "Preloading RAIR local LLM provider=%s model=%s device=%s dtype=%s",
+                self.llm_provider,
+                self.reasoning_model,
+                self.local_llm_device,
+                self.local_llm_dtype,
+            )
+            llm_service._load()
+        else:
+            logger.info(
+                "RAIR LLM provider=%s uses lazy remote/client initialization; skipping model warm-up",
+                self.llm_provider,
+            )
+        logger.info("RAIR LLM preload done elapsed=%.2fs", time.perf_counter() - start)
 
     @staticmethod
     def _compact_suggestions(suggestions: List[Dict[str, Any]]) -> List[Dict[str, Any]]:

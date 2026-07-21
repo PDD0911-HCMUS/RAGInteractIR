@@ -26,11 +26,14 @@ RAIR_FUSION_POOL_SIZE=200
 
 RAIR_EVIDENCE_TOP_K=10
 RAIR_FACT_TOP_M=4
+RAIR_PRELOAD_LLM=1
 PRELOAD_RAIR_API=1
 PRELOAD_LEGACY_VLM=0
 ```
 
 The frontend can override the retrieval backend per session when creating a new session.
+
+`RAIR_PRELOAD_LLM=1` loads the local reasoning model during FastAPI startup, after the gallery is prepared. This makes server startup slower, but avoids a very slow first user query.
 
 ## 1. Create Empty RAIR Session
 
