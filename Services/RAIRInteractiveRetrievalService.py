@@ -59,12 +59,12 @@ def _resolve_device(env_name: str, default: str = "cpu") -> str:
 @dataclass
 class RAIRSession:
     session_id: str
-    initial_query: str
     embedding_backend: str
     embedding_model: str
     retrieval_index: str
     fusion_alpha: float
     fusion_pool_size: int
+    initial_query: str = ""
     current_query: str = ""
     turn: int = 0
     history: List[Dict[str, Any]] = field(default_factory=list)
@@ -395,19 +395,14 @@ class RAIRInteractiveRetrievalService:
         session.history.append(turn_payload)
         return turn_payload
 
-    async def start_session(
+    def create_session(
         self,
-        initial_query: str,
         embedding_backend: Optional[str] = None,
         embedding_model: Optional[str] = None,
         retrieval_index: Optional[str] = None,
         fusion_alpha: Optional[float] = None,
         fusion_pool_size: Optional[int] = None,
     ) -> Dict[str, Any]:
-        initial_query = str(initial_query or "").strip()
-        if not initial_query:
-            raise ValueError("initial_query must not be empty")
-
         backend = self._normalize_embedding_backend(embedding_backend or self.embedding_backend)
         model_name = str(embedding_model or self._default_model_for_backend(backend))
         index = self._normalize_retrieval_index(retrieval_index or self.retrieval_index)
@@ -417,21 +412,35 @@ class RAIRInteractiveRetrievalService:
         session_id = str(uuid.uuid4())
         session = RAIRSession(
             session_id=session_id,
-            initial_query=initial_query,
             embedding_backend=backend,
             embedding_model=model_name,
             retrieval_index=index,
             fusion_alpha=alpha,
             fusion_pool_size=pool_size,
-            current_query=initial_query,
         )
         self._sessions[session_id] = session
-        turn = await self._run_rair_turn(session=session, user_message=initial_query)
         return {
             "session_id": session_id,
             "session": self._session_summary(session),
-            "turn": turn,
         }
+
+    async def start_session(
+        self,
+        initial_query: str,
+        embedding_backend: Optional[str] = None,
+        embedding_model: Optional[str] = None,
+        retrieval_index: Optional[str] = None,
+        fusion_alpha: Optional[float] = None,
+        fusion_pool_size: Optional[int] = None,
+    ) -> Dict[str, Any]:
+        created = self.create_session(
+            embedding_backend=embedding_backend,
+            embedding_model=embedding_model,
+            retrieval_index=retrieval_index,
+            fusion_alpha=fusion_alpha,
+            fusion_pool_size=fusion_pool_size,
+        )
+        return await self.submit_feedback(created["session_id"], initial_query)
 
     async def submit_feedback(self, session_id: str, message: str) -> Dict[str, Any]:
         session = self._sessions.get(session_id)
@@ -442,7 +451,10 @@ class RAIRInteractiveRetrievalService:
         if not message:
             raise ValueError("message must not be empty")
 
-        if session.pending_suggestions:
+        if session.turn == 0:
+            session.initial_query = message
+            session.current_query = message
+        elif session.pending_suggestions:
             session.feedback_pairs.append(
                 {
                     "turn": len(session.feedback_pairs) + 1,
@@ -457,7 +469,6 @@ class RAIRInteractiveRetrievalService:
             "session": self._session_summary(session),
             "turn": turn,
         }
-
     def get_session(self, session_id: str) -> Dict[str, Any]:
         session = self._sessions.get(session_id)
         if session is None:

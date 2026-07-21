@@ -10,8 +10,7 @@ from Services.RAIRInteractiveRetrievalService import RAIRInteractiveRetrievalSer
 logger = logging.getLogger("rair.api")
 
 
-class RAIRStartRequest(BaseModel):
-    query: str = Field(..., min_length=1)
+class RAIRCreateSessionRequest(BaseModel):
     embedding_backend: Optional[str] = Field(
         default=None,
         description="Retrieval embedding backend: siglip or clip.",
@@ -49,7 +48,7 @@ class RAIRRouter:
             "/sessions",
             self.start_session,
             methods=["POST"],
-            summary="Start a RAIR-VF retrieval session",
+            summary="Create an empty RAIR-VF retrieval session",
         )
         self.router.add_api_route(
             "/sessions/{session_id}/turns",
@@ -67,10 +66,9 @@ class RAIRRouter:
     def preload_gallery(self) -> None:
         self.service.preload()
 
-    async def start_session(self, req: RAIRStartRequest) -> Dict[str, Any]:
+    async def start_session(self, req: RAIRCreateSessionRequest) -> Dict[str, Any]:
         try:
-            return await self.service.start_session(
-                initial_query=req.query,
+            return self.service.create_session(
                 embedding_backend=req.embedding_backend,
                 embedding_model=req.embedding_model,
                 retrieval_index=req.retrieval_index,
@@ -80,7 +78,7 @@ class RAIRRouter:
         except ValueError as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
         except Exception as exc:
-            logger.exception("RAIR session start failed")
+            logger.exception("RAIR session creation failed")
             raise HTTPException(status_code=500, detail=repr(exc)) from exc
 
     async def submit_feedback(
