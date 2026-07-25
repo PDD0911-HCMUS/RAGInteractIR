@@ -19,30 +19,30 @@ The script creates:
 
 ## Expected Dataset Layout
 
-Use the Flickr30K Entities layout:
+Keep all Flickr-related files under one dataset folder:
 
 ```text
-Flickr30KEntities/
-  Annotations/
-    1000092795.xml
-  Sentences/
-    1000092795.txt
-  train.txt
-  val.txt
-  test.txt
-
-Flickr30K/
-  1000092795.jpg
+datasets/Flickr/
+  Images/
+    1000092795.jpg
+  Entities/
+    Annotations/
+      1000092795.xml
+    Sentences/
+      1000092795.txt
+    train.txt
+    val.txt
+    test.txt
 ```
 
-If images are stored in a subfolder, pass it with `--image-subdir`.
+The DB stores image paths relative to `datasets/Flickr/Images`.
 
 ## Build Visual Facts
 
 ```bash
 python3 datasets/Flickr30KEntities.py \
-  --root /workspace/app/datasets/Flickr30KEntities \
-  --image-folder /workspace/app/datasets/Flickr30K \
+  --root /workspace/app/datasets/Flickr/Entities \
+  --image-folder /workspace/app/datasets/Flickr/Images \
   --split train \
   --skip-existing
 ```
@@ -51,8 +51,8 @@ Quick smoke test:
 
 ```bash
 python3 datasets/Flickr30KEntities.py \
-  --root /workspace/app/datasets/Flickr30KEntities \
-  --image-folder /workspace/app/datasets/Flickr30K \
+  --root /workspace/app/datasets/Flickr/Entities \
+  --image-folder /workspace/app/datasets/Flickr/Images \
   --split train \
   --limit 10 \
   --skip-existing
@@ -62,7 +62,7 @@ python3 datasets/Flickr30KEntities.py \
 
 ```bash
 CUDA_VISIBLE_DEVICES=0 python3 datasets/Flickr30KEmbeddings.py \
-  --image-folder /workspace/app/datasets/Flickr30K \
+  --image-folder /workspace/app/datasets/Flickr/Images \
   --backend clip \
   --model-name openai/clip-vit-base-patch32 \
   --mode train \
@@ -77,7 +77,7 @@ CUDA_VISIBLE_DEVICES=0 python3 datasets/Flickr30KEmbeddings.py \
 
 ```bash
 CUDA_VISIBLE_DEVICES=0 python3 datasets/Flickr30KEmbeddings.py \
-  --image-folder /workspace/app/datasets/Flickr30K \
+  --image-folder /workspace/app/datasets/Flickr/Images \
   --backend siglip \
   --model-name google/siglip-base-patch16-224 \
   --mode train \

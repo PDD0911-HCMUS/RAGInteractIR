@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+import json
 import re
 import xml.etree.ElementTree as ET
 from pathlib import Path
@@ -23,9 +24,11 @@ INSERT INTO "Flickr30KTargetAnnotations"
      "visual_facts", "positive_facts", "negative_facts", "uncertain_facts",
      "entity_phrases", "grounded_phrases", "boxes", "enriched_caption", "source")
 VALUES
-    (:image_id, :image_path, :split, :base_caption, :captions,
-     :visual_facts, :positive_facts, :negative_facts, :uncertain_facts,
-     :entity_phrases, :grounded_phrases, :boxes, :enriched_caption, :source)
+    (:image_id, :image_path, :split, :base_caption, CAST(:captions AS JSONB),
+     CAST(:visual_facts AS JSONB), CAST(:positive_facts AS JSONB),
+     CAST(:negative_facts AS JSONB), CAST(:uncertain_facts AS JSONB),
+     CAST(:entity_phrases AS JSONB), CAST(:grounded_phrases AS JSONB),
+     CAST(:boxes AS JSONB), :enriched_caption, :source)
 """
 
 EXISTING_TARGET_SQL = """
@@ -296,14 +299,14 @@ class Flickr30KEntitiesBuilder:
                     "image_path": image_path,
                     "split": self.split,
                     "base_caption": captions[0] if captions else "",
-                    "captions": captions,
-                    "visual_facts": facts["visual_facts"],
-                    "positive_facts": facts["positive_facts"],
-                    "negative_facts": facts["negative_facts"],
-                    "uncertain_facts": facts["uncertain_facts"],
-                    "entity_phrases": facts["entity_phrases"],
-                    "grounded_phrases": facts["grounded_phrases"],
-                    "boxes": annotation_data["boxes"],
+                    "captions": json.dumps(captions, ensure_ascii=True),
+                    "visual_facts": json.dumps(facts["visual_facts"], ensure_ascii=True),
+                    "positive_facts": json.dumps(facts["positive_facts"], ensure_ascii=True),
+                    "negative_facts": json.dumps(facts["negative_facts"], ensure_ascii=True),
+                    "uncertain_facts": json.dumps(facts["uncertain_facts"], ensure_ascii=True),
+                    "entity_phrases": json.dumps(facts["entity_phrases"], ensure_ascii=True),
+                    "grounded_phrases": json.dumps(facts["grounded_phrases"], ensure_ascii=True),
+                    "boxes": json.dumps(annotation_data["boxes"], ensure_ascii=True),
                     "enriched_caption": enriched_caption,
                     "source": "flickr30k_entities",
                 }

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+import json
 import uuid
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Sequence, Set, Tuple
@@ -35,14 +36,14 @@ INSERT_CLIP_SQL = """
 INSERT INTO "Flickr30KCLIPCapDial"
     ("image_id", "caption", "captions", "dialog_id", "img_em", "cap_em", "mode", "image_path", "model_name")
 VALUES
-    (:image_id, :caption, :captions, :dialog_id, :img_em, :cap_em, :mode, :image_path, :model_name)
+    (:image_id, :caption, CAST(:captions AS JSONB), :dialog_id, :img_em, :cap_em, :mode, :image_path, :model_name)
 """
 
 INSERT_SIGLIP_SQL = """
 INSERT INTO "Flickr30KSigLIPCapDial"
     ("image_id", "caption", "captions", "dialog_id", "img_em", "cap_em", "mode", "image_path", "model_name")
 VALUES
-    (:image_id, :caption, :captions, :dialog_id, :img_em, :cap_em, :mode, :image_path, :model_name)
+    (:image_id, :caption, CAST(:captions AS JSONB), :dialog_id, :img_em, :cap_em, :mode, :image_path, :model_name)
 """
 
 EXISTING_SQL = """
@@ -260,7 +261,7 @@ class Flickr30KEmbeddingBuilder:
                         {
                             "image_id": image_id,
                             "caption": caption,
-                            "captions": captions,
+                            "captions": json.dumps(captions, ensure_ascii=True),
                             "dialog_id": uuid.uuid4(),
                             "img_em": img_em,
                             "cap_em": cap_em,
