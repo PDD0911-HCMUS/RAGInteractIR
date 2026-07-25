@@ -8,6 +8,8 @@ import sys
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
+from sqlalchemy import text
+
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 if str(PROJECT_ROOT) not in sys.path:
@@ -27,6 +29,7 @@ from Experiments.e2_rair_comparison import (
     rank_change_metrics,
     score_oracle_suggestions,
 )
+from Database.db_session import SessionLocal
 from Services.QVFSService import QVFS
 
 
@@ -39,6 +42,40 @@ def load_scenario(path: Path) -> Dict[str, Any]:
     if "samples" not in scenario:
         raise ValueError(f"Invalid scenario file, missing samples: {path}")
     return scenario
+
+
+def load_flickr30k_annotations(split: str, limit: Optional[int], offset: int) -> List[Dict[str, Any]]:
+    sql = """
+        SELECT "split", "image_id", "image_path", "base_caption", "enriched_caption",
+               "visual_facts", "positive_facts", "negative_facts", "uncertain_facts"
+        FROM "Flickr30KTargetAnnotations"
+        WHERE "split" = :split
+        ORDER BY "ID"
+        OFFSET :offset
+    """
+    params: Dict[str, Any] = {"split": split, "offset": offset}
+    if limit is not None and limit >= 0:
+        sql += ' LIMIT :limit'
+        params["limit"] = limit
+
+    with SessionLocal() as session:
+        rows = session.execute(text(sql), params).all()
+
+    return [
+        {
+            "split": row.split,
+            "dialog_index": None,
+            "image_id": row.image_id,
+            "image_path": row.image_path,
+            "base_caption": row.base_caption,
+            "enriched_caption": row.enriched_caption,
+            "visual_facts": row.visual_facts or [],
+            "positive_facts": row.positive_facts or [],
+            "negative_facts": row.negative_facts or [],
+            "uncertain_facts": row.uncertain_facts or [],
+        }
+        for row in rows
+    ]
 
 
 def scenario_samples(scenario: Dict[str, Any]) -> List[Dict[str, Any]]:
@@ -72,6 +109,16 @@ def load_e3_samples(args: argparse.Namespace) -> tuple[List[Dict[str, Any]], Opt
         if args.limit is not None and args.limit >= 0:
             samples = samples[: args.limit]
         return samples, scenario
+
+    if args.dataset == "flickr30k":
+        return (
+            load_flickr30k_annotations(
+                split=args.split,
+                limit=args.limit,
+                offset=args.offset,
+            ),
+            None,
+        )
 
     return (
         load_annotations(
@@ -901,6 +948,7 @@ async def main_async(args: argparse.Namespace) -> None:
         reasoning_model=args.local_llm_model if args.llm_provider == "local" else args.reasoning_model,
         embedding_backend=args.embedding_backend,
         embedding_mode=args.split,
+        dataset=args.dataset,
     )
     user_simulator = None
     if args.selection_policy == "llm_user_sim":
@@ -1017,6 +1065,7 @@ async def main_async(args: argparse.Namespace) -> None:
             "experiment": "E3",
             "scenario": str(args.scenario) if args.scenario else None,
             "scenario_name": scenario.get("scenario_name") if scenario else None,
+            "dataset": args.dataset,
             "split": args.split,
             "limit": args.limit,
             "offset": args.offset,
@@ -1075,7 +1124,8 @@ def parse_args() -> argparse.Namespace:
         description="E3 turn-by-turn RAIR evaluation over multiple interaction turns."
     )
     parser.add_argument("--scenario", type=Path, default=None)
-    parser.add_argument("--split", choices=["train", "val"], default="train")
+    parser.add_argument("--dataset", choices=["visdial", "flickr30k"], default="visdial")
+    parser.add_argument("--split", choices=["train", "val", "test"], default="train")
     parser.add_argument("--limit", type=int, default=20)
     parser.add_argument("--offset", type=int, default=0)
     parser.add_argument("--turns", type=int, default=5)

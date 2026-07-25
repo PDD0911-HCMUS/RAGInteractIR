@@ -62,17 +62,19 @@ class VisDialGPTCLIPService:
         compose_max_output_tokens: Optional[int] = None,
         embedding_backend: str = "clip",
         embedding_mode: str = "train",
+        dataset: str = "visdial",
     ) -> None:
         self.vlm = vlm
         self.device = device
         self.embedding_backend = self._normalize_embedding_backend(embedding_backend)
         self.embedding_mode = str(embedding_mode or "train")
+        self.dataset = self._normalize_dataset(dataset)
 
         self.tokenizer = None
         self.processor = None
         self.model = None
         self.prompt = PromptCollectionService()
-        self.annotation_service = TargetAnnotationService()
+        self.annotation_service = TargetAnnotationService(dataset=self.dataset)
 
         # Lazily used by rewrite/diagnosis paths. Retrieval-only baselines do not
         # need an OpenAI client.
@@ -110,6 +112,20 @@ class VisDialGPTCLIPService:
         if backend not in aliases:
             raise ValueError(f"Unsupported embedding backend: {value}")
         return aliases[backend]
+
+    @staticmethod
+    def _normalize_dataset(value: str) -> str:
+        dataset = str(value or "visdial").strip().lower()
+        aliases = {
+            "visdial": "visdial",
+            "visdial2014": "visdial",
+            "flickr": "flickr30k",
+            "flickr30k": "flickr30k",
+            "flickr30k_entities": "flickr30k",
+        }
+        if dataset not in aliases:
+            raise ValueError(f"Unsupported dataset: {value}")
+        return aliases[dataset]
 
     def _get_openai_service(self) -> OpenAIService:
         if self.openai_service is None:
@@ -184,6 +200,21 @@ class VisDialGPTCLIPService:
         return feats.cpu()
 
     def _load_gallery_rows(self):
+        if self.dataset == "flickr30k":
+            table_name = "Flickr30KSigLIPCapDial" if self.embedding_backend == "siglip" else "Flickr30KCLIPCapDial"
+            with SessionLocal() as session:
+                return session.execute(
+                    text(
+                        f'''
+                        SELECT "image_path", "caption", "img_em", "cap_em"
+                        FROM "{table_name}"
+                        WHERE "mode" = :mode AND "model_name" = :model_name
+                        ORDER BY "ID"
+                        '''
+                    ),
+                    {"mode": self.embedding_mode, "model_name": self.vlm},
+                ).all()
+
         if self.embedding_backend == "siglip":
             with SessionLocal() as session:
                 return session.execute(
@@ -219,7 +250,7 @@ class VisDialGPTCLIPService:
         console = Console()
         start_total = time.perf_counter()
 
-        console.rule("[bold cyan]Creating VisDial Gallery + FAISS[/bold cyan]")
+        console.rule(f"[bold cyan]Creating {self.dataset} Gallery + FAISS[/bold cyan]")
 
         with Progress(
             SpinnerColumn(),
@@ -239,7 +270,10 @@ class VisDialGPTCLIPService:
             progress.advance(task)
 
             if not rows:
-                table_name = "VisDialSigLIPCapDial" if self.embedding_backend == "siglip" else "VisDialCLIPCapDial"
+                if self.dataset == "flickr30k":
+                    table_name = "Flickr30KSigLIPCapDial" if self.embedding_backend == "siglip" else "Flickr30KCLIPCapDial"
+                else:
+                    table_name = "VisDialSigLIPCapDial" if self.embedding_backend == "siglip" else "VisDialCLIPCapDial"
                 console.print(f"[bold red]No data found in {table_name}.[/bold red]")
                 raise ValueError(f"No data found in {table_name}.")
 
@@ -302,6 +336,7 @@ class VisDialGPTCLIPService:
         summary.add_column("Value", style="green")
 
         summary.add_row("Loaded rows", f"{len(rows):,}")
+        summary.add_row("Dataset", self.dataset)
         summary.add_row("Embedding backend", self.embedding_backend)
         summary.add_row("Embedding model", self.vlm)
         summary.add_row("Image embedding shape", str(img_embeddings.shape))
